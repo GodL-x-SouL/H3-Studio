@@ -1,4 +1,4 @@
-export type Section = "run" | "frames" | "setup" | "console";
+export type Section = "run" | "frames" | "setup";
 
 export type Ratio = "16:9" | "9:16" | "1:1" | "4:3" | "3:4";
 

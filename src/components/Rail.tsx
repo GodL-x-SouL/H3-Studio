@@ -1,11 +1,10 @@
-import { Clapperboard, Image as ImageIcon, SlidersHorizontal, Terminal } from "lucide-react";
+import { Clapperboard, Image as ImageIcon, SlidersHorizontal } from "lucide-react";
 import type { Section } from "../types";
 
 const ITEMS: { id: Section; label: string; icon: typeof Clapperboard }[] = [
   { id: "run", label: "Run", icon: Clapperboard },
   { id: "frames", label: "Frames", icon: ImageIcon },
   { id: "setup", label: "Setup", icon: SlidersHorizontal },
-  { id: "console", label: "Console", icon: Terminal },
 ];
 
 export default function Rail({

@@ -19,7 +19,7 @@ export default function TopBar({
       </div>
       <div className="flex-1" />
       <div className="flex shrink-0 items-center gap-2.5">
-        <span className="flex items-center gap-1.5 rounded-full bg-chip px-2.5 py-1 text-[11px] font-medium text-soft">
+        <span className="flex h-8 items-center gap-1.5 rounded-full bg-chip px-3 text-[12px] font-medium text-soft">
           <span
             className={`h-1.5 w-1.5 rounded-full ${
               online ? "bg-emerald-500" : "bg-amber-500"
@@ -29,9 +29,9 @@ export default function TopBar({
         </span>
         <button
           type="button"
-          className="flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-[13px] font-medium text-primary-ink transition-opacity hover:opacity-90"
+          className="flex h-8 items-center gap-1.5 rounded-full bg-primary px-4 text-[12px] font-medium text-primary-ink transition-opacity hover:opacity-90"
         >
-          <Download size={15} />
+          <Download size={14} />
           Export
         </button>
         <button

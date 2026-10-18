@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import ConsoleLog from "./components/ConsoleLog";
 import LeftPanel from "./components/LeftPanel";
 import PreviewCard from "./components/PreviewCard";
 import Rail from "./components/Rail";
@@ -110,12 +111,12 @@ export default function App() {
               config={config}
               patch={patch}
               jobs={jobs}
-              status={status}
               online={online}
             />
           </div>
-          <main className="flex min-w-0 flex-1 flex-col">
+          <main className="flex min-w-0 flex-1 flex-col gap-3">
             <PreviewCard config={config} jobs={jobs} />
+            <ConsoleLog online={online} status={status} />
           </main>
           <RightPanel
             config={config}

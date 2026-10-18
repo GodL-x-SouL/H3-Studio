@@ -75,9 +75,6 @@ export default function PreviewCard({
                 style={job.progress != null ? { width: `${Math.max(3, job.progress * 100)}%` } : undefined}
               />
             </div>
-            <p className="truncate pt-2 text-center text-[11px] text-faint">
-              {job.label} · {fmtDur(job.elapsed_s ?? job.queued_s)}
-            </p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2 text-faint">

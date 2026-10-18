@@ -4,12 +4,11 @@ import {
   ImagePlus,
   MoreHorizontal,
   Plus,
-  RefreshCw,
   Wand2,
   X,
 } from "lucide-react";
 import { Switch } from "./controls";
-import { api, type BackendStatus, type Job } from "../api";
+import { api, type Job } from "../api";
 import { type RunConfig, type Section } from "../types";
 
 const SETUP_ROWS = [
@@ -129,14 +128,12 @@ export default function LeftPanel({
   config,
   patch,
   jobs,
-  status,
   online,
 }: {
   section: Section;
   config: RunConfig;
   patch: (partial: Partial<RunConfig>) => void;
   jobs: Job[];
-  status: BackendStatus | null;
   online: boolean;
 }) {
   const [setup, setSetup] = useState<Record<string, boolean>>({
@@ -147,7 +144,6 @@ export default function LeftPanel({
   });
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupNote, setSetupNote] = useState<{ ok: boolean; text: string } | null>(null);
-  const [logText, setLogText] = useState("");
 
   useEffect(() => {
     if (!online) return;
@@ -164,25 +160,6 @@ export default function LeftPanel({
       })
       .catch(() => {});
   }, [online]);
-
-  useEffect(() => {
-    if (section !== "console" || !online) return;
-    let stopped = false;
-    const tick = async () => {
-      try {
-        const { text } = await api.log();
-        if (!stopped) setLogText(text);
-      } catch {
-        /* ignore */
-      }
-    };
-    void tick();
-    const id = window.setInterval(tick, 4000);
-    return () => {
-      stopped = true;
-      window.clearInterval(id);
-    };
-  }, [section, online]);
 
   const runSetup = async (fn: () => Promise<{ rows: [string, string][] }>) => {
     setSetupBusy(true);
@@ -334,55 +311,6 @@ export default function LeftPanel({
               locally.
             </p>
           )}
-        </div>
-      ) : null}
-
-      {section === "console" ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center justify-between pb-3">
-            <span className="text-[11px] font-medium text-faint">comfy.log</span>
-            <button
-              type="button"
-              onClick={() => void api.log().then(({ text }) => setLogText(text)).catch(() => {})}
-              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-faint transition-colors hover:bg-chip hover:text-ink"
-            >
-              <RefreshCw size={12} />
-              Refresh
-            </button>
-          </div>
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto rounded-xl border border-line bg-chip/40 p-2">
-            {logText ? (
-              logText
-                .split("\n")
-                .slice(-200)
-                .map((line, index) => (
-                  <div key={index} className="font-mono text-[10.5px] leading-relaxed text-soft">
-                    {line}
-                  </div>
-                ))
-            ) : (
-              <p className="text-[11px] text-faint">
-                {online ? "no log yet" : "backend offline — run cell 03"}
-              </p>
-            )}
-          </div>
-          <div className="mt-3 flex items-center justify-between rounded-xl border border-line px-3 py-2">
-            <span className="flex items-center gap-2 text-[11.5px] font-medium text-soft">
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  status?.comfy ? "bg-emerald-500" : "bg-faint"
-                }`}
-              />
-              ComfyUI :8188
-            </span>
-            <span className="text-[11px] text-faint">
-              {!online
-                ? "offline"
-                : status?.comfy
-                  ? `v${status.version} · ${status.vram_free_mib ?? 0} MiB free`
-                  : "stopped"}
-            </span>
-          </div>
         </div>
       ) : null}
     </div>
