@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --c-canvas: #f2f2ef;
+  --c-shell: #fbfbf9;
+  --c-surface: #ffffff;
+  --c-elev: #ffffff;
+  --c-line: #ecece7;
+  --c-edge: #e0e0da;
+  --c-ink: #141413;
+  --c-soft: #6f6f68;
+  --c-faint: #9d9d95;
+  --c-chip: #f4f4f0;
+  --c-chip2: #ecece6;
+  --c-accent: #2f6be8;
+  --c-warm: #ef8b45;
+  --c-primary: #141413;
+  --c-primary-ink: #ffffff;
+  --c-switch-on: #141413;
+  --c-switch-off: #e3e3dd;
+  --c-thumb-a: #e7e7e1;
+  --c-thumb-b: #cecec6;
+  --c-stage-a: #f1f1ed;
+  --c-stage-b: #d6d6ce;
+}
+
+.dark {
+  --c-canvas: #000000;
+  --c-shell: #050505;
+  --c-surface: #0b0b0a;
+  --c-elev: #232320;
+  --c-line: #1d1d1a;
+  --c-edge: #2b2b27;
+  --c-ink: #f2f2ee;
+  --c-soft: #a5a59e;
+  --c-faint: #6f6f68;
+  --c-chip: #161614;
+  --c-chip2: #1d1d1a;
+  --c-accent: #4c82ff;
+  --c-warm: #f0944f;
+  --c-primary: #f2f2ee;
+  --c-primary-ink: #0b0b0a;
+  --c-switch-on: #2f6be8;
+  --c-switch-off: #2b2b27;
+  --c-thumb-a: #1a1a17;
+  --c-thumb-b: #242420;
+  --c-stage-a: #171715;
+  --c-stage-b: #0d0d0c;
+}
+
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-canvas: var(--c-canvas);
+  --color-shell: var(--c-shell);
+  --color-surface: var(--c-surface);
+  --color-elev: var(--c-elev);
+  --color-line: var(--c-line);
+  --color-edge: var(--c-edge);
+  --color-ink: var(--c-ink);
+  --color-soft: var(--c-soft);
+  --color-faint: var(--c-faint);
+  --color-chip: var(--c-chip);
+  --color-chip2: var(--c-chip2);
+  --color-accent: var(--c-accent);
+  --color-warm: var(--c-warm);
+  --color-primary: var(--c-primary);
+  --color-primary-ink: var(--c-primary-ink);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html,
+body {
+  background: var(--c-canvas);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+.thumb {
+  background-image: linear-gradient(135deg, var(--c-thumb-a), var(--c-thumb-b));
+}
+
+.stage {
+  background-image: linear-gradient(135deg, var(--c-stage-a), var(--c-stage-b));
+}
+
+input[type="range"].h3-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--c-edge);
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"].h3-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--c-primary);
+  border: 2px solid var(--c-surface);
+  box-shadow: 0 1px 3px rgba(10, 10, 10, 0.3);
+}
+
+input[type="range"].h3-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--c-primary);
+  border: 2px solid var(--c-surface);
+  box-shadow: 0 1px 3px rgba(10, 10, 10, 0.3);
+}
