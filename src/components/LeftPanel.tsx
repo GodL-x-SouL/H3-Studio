@@ -14,7 +14,6 @@ import { type RunConfig, type Section } from "../types";
 const SETUP_ROWS = [
   { id: "fp16fix", label: "fp16 NaN fix", desc: "required by safe_fp16" },
   { id: "fp16safe", label: "FP16Safe node", desc: "guarded fp16 cast sites" },
-  { id: "tespeed", label: "TE-Speed cache", desc: "text encoder reuse" },
   { id: "spectrum", label: "Spectrum", desc: "attention sampling" },
 ];
 
@@ -139,7 +138,6 @@ export default function LeftPanel({
   const [setup, setSetup] = useState<Record<string, boolean>>({
     fp16fix: true,
     fp16safe: true,
-    tespeed: true,
     spectrum: false,
   });
   const [setupBusy, setSetupBusy] = useState(false);

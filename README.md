@@ -56,6 +56,6 @@ python3 server/h3_backend.py --dist dist --port 8000
 | `POST /h3/upload`       | stage a first/last frame image                       |
 | `GET  /h3/output?file=` | serve a produced video from ComfyUI/output           |
 | `GET  /h3/log`          | ComfyUI log tail                                     |
-| `GET/POST /h3/setup`    | method toggles (fp16 fix, FP16Safe, TE-Speed, …)     |
+| `GET/POST /h3/setup`    | method toggles (fp16 fix, FP16Safe, Spectrum, …)     |
 | `POST /h3/setup/sage`   | install the prebuilt SageAttention wheel             |
 | everything else         | reverse-proxied to ComfyUI (HTTP + WebSocket)        |

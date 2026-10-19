@@ -8,7 +8,7 @@ type Tab = (typeof TABS)[number];
 
 const RATIOS: readonly Ratio[] = ["16:9", "9:16", "1:1", "4:3", "3:4"];
 const DTYPES = ["safe fp16", "fp16", "bf16", "node"] as const;
-const SPEEDS: readonly Speed[] = ["none", "4-step", "TE-Speed", "Spectrum"];
+const SPEEDS: readonly Speed[] = ["none", "4-step", "Spectrum"];
 
 const DTYPE_TO_LABEL: Record<DType, (typeof DTYPES)[number]> = {
   safe_fp16: "safe fp16",
@@ -253,8 +253,8 @@ export default function RightPanel({
                 size="sm"
               />
               <p className="text-[11px] leading-relaxed text-faint">
-                The 4-step profile pairs a turbo LoRA with few steps; TE-Speed and Spectrum
-                trade a little quality for another 15–20%.
+                The 4-step profile pairs a turbo LoRA with few steps; Spectrum
+                trades a little quality for another 15–20%.
               </p>
             </Section>
             <Section title="Budget" open={!!open.budget} onToggle={() => toggle("budget")}>

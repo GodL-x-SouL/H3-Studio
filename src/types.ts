@@ -4,7 +4,7 @@ export type Ratio = "16:9" | "9:16" | "1:1" | "4:3" | "3:4";
 
 export type DType = "safe_fp16" | "fp16_raw" | "bf16" | "fp16safe_node";
 
-export type Speed = "none" | "4-step" | "TE-Speed" | "Spectrum";
+export type Speed = "none" | "4-step" | "Spectrum";
 
 export interface RunConfig {
   prompt: string;
