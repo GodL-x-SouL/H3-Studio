@@ -1,6 +1,6 @@
 import { Clapperboard, Maximize2, Play } from "lucide-react";
 import { IconBtn } from "./controls";
-import { dimsFor, type RunConfig } from "../types";
+import { dimsFor, ltxDimsFor, type H3Config, type LTXConfig, type ModelId } from "../types";
 import type { Job } from "../api";
 
 function fmtDur(seconds: number): string {
@@ -12,10 +12,14 @@ function fmtDur(seconds: number): string {
 }
 
 export default function PreviewCard({
-  config,
+  model,
+  h3,
+  ltx,
   jobs,
 }: {
-  config: RunConfig;
+  model: ModelId;
+  h3: H3Config;
+  ltx: LTXConfig;
   jobs: Job[];
 }) {
   const job =
@@ -26,14 +30,18 @@ export default function PreviewCard({
   const active = job !== null && (job.status === "running" || job.status === "queued");
   const video = job && job.status === "done" ? job.video : null;
   const failed = job !== null && job.status === "failed";
-  const dims = job?.dims ?? dimsFor(config);
-  const frames = job?.frames ?? config.frames;
+  const dims = job?.dims ?? (model === "h3" ? dimsFor(h3) : ltxDimsFor(ltx));
+  const frames = job?.frames ?? (model === "h3" ? h3.frames : ltx.frames);
+  const runningModel = job?.model ?? model;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-line bg-surface p-3">
       <header className="flex shrink-0 items-center gap-2 px-1 pb-3">
         <Clapperboard size={14} className="text-faint" />
         <span className="text-[12px] font-medium text-soft">Preview</span>
+        <span className="rounded-full bg-chip px-2.5 py-1 text-[10.5px] font-semibold tracking-wide text-soft uppercase">
+          {runningModel === "ltx" ? "LTX 2.5" : "H3"}
+        </span>
         <span className="ml-auto rounded-full bg-chip px-2.5 py-1 text-[11px] font-medium text-soft tabular-nums">
           {dims} · {frames}f
         </span>
@@ -68,9 +76,7 @@ export default function PreviewCard({
             <div className="h-1.5 overflow-hidden rounded-full bg-chip">
               <div
                 className={`h-full rounded-full bg-accent transition-all duration-500 ${
-                  job.progress == null
-                    ? "w-1/3 animate-pulse"
-                    : ""
+                  job.progress == null ? "w-1/3 animate-pulse" : ""
                 }`}
                 style={job.progress != null ? { width: `${Math.max(3, job.progress * 100)}%` } : undefined}
               />

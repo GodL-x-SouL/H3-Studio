@@ -6,7 +6,15 @@ import Rail from "./components/Rail";
 import RightPanel from "./components/RightPanel";
 import TopBar from "./components/TopBar";
 import { api, type BackendStatus, type Job } from "./api";
-import { defaultConfig, LORA_CHOICES, type RunConfig, type Section } from "./types";
+import {
+  defaultH3Config,
+  defaultLTXConfig,
+  LORA_CHOICES,
+  type H3Config,
+  type LTXConfig,
+  type ModelId,
+  type Section,
+} from "./types";
 
 type Theme = "light" | "amoled";
 
@@ -22,7 +30,9 @@ function readTheme(): Theme {
 
 export default function App() {
   const [section, setSection] = useState<Section>("run");
-  const [config, setConfig] = useState<RunConfig>(defaultConfig);
+  const [model, setModel] = useState<ModelId>("h3");
+  const [h3, setH3] = useState<H3Config>(defaultH3Config);
+  const [ltx, setLtx] = useState<LTXConfig>(defaultLTXConfig);
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [online, setOnline] = useState(false);
   const [status, setStatus] = useState<BackendStatus | null>(null);
@@ -72,11 +82,13 @@ export default function App() {
     if (online) void refreshLoras();
   }, [online, refreshLoras]);
 
-  const patch = (partial: Partial<RunConfig>) =>
-    setConfig((current) => ({ ...current, ...partial }));
+  const patchH3 = (partial: Partial<H3Config>) =>
+    setH3((current) => ({ ...current, ...partial }));
+  const patchLTX = (partial: Partial<LTXConfig>) =>
+    setLtx((current) => ({ ...current, ...partial }));
 
   const generate = async () => {
-    const { id } = await api.generate(config);
+    const { id } = await api.generate(model, h3, ltx);
     try {
       const { jobs: next } = await api.jobs();
       setJobs(next);
@@ -98,6 +110,8 @@ export default function App() {
     <div className="h-screen w-screen bg-canvas p-4 font-sans text-ink">
       <div className="mx-auto flex h-full max-w-[1440px] flex-col overflow-hidden rounded-[24px] border border-line bg-shell shadow-[0_1px_2px_rgba(20,20,19,0.04),0_30px_60px_-45px_rgba(20,20,19,0.35)]">
         <TopBar
+          model={model}
+          onModelChange={setModel}
           theme={theme}
           online={online}
           onToggleTheme={() => setTheme((value) => (value === "amoled" ? "light" : "amoled"))}
@@ -108,19 +122,25 @@ export default function App() {
             <div className="my-3 w-px shrink-0 bg-line" />
             <LeftPanel
               section={section}
-              config={config}
-              patch={patch}
+              model={model}
+              h3={h3}
+              ltx={ltx}
+              patchH3={patchH3}
+              patchLTX={patchLTX}
               jobs={jobs}
               online={online}
             />
           </div>
           <main className="flex min-w-0 flex-1 flex-col gap-3">
-            <PreviewCard config={config} jobs={jobs} />
+            <PreviewCard model={model} h3={h3} ltx={ltx} jobs={jobs} />
             <ConsoleLog online={online} status={status} />
           </main>
           <RightPanel
-            config={config}
-            patch={patch}
+            model={model}
+            h3={h3}
+            ltx={ltx}
+            patchH3={patchH3}
+            patchLTX={patchLTX}
             loras={loras}
             onAddLora={addLora}
             online={online}

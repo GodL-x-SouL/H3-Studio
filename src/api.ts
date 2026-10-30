@@ -1,4 +1,4 @@
-import type { RunConfig } from "./types";
+import type { H3Config, LTXConfig, ModelId } from "./types";
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 
@@ -8,6 +8,7 @@ export interface Job {
   stage: string;
   progress: number | null;
   label: string;
+  model?: ModelId;
   seed?: number;
   steps?: number;
   frames?: number;
@@ -24,6 +25,7 @@ export interface BackendStatus {
   backend: boolean;
   comfy: boolean;
   running: string | null;
+  running_model?: ModelId | null;
   queued: number;
   version?: string;
   vram_free_mib?: number;
@@ -46,8 +48,12 @@ const post = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
-export function payloadFor(config: RunConfig) {
+function h3Payload(config: H3Config) {
+  const references =
+    config.mode === "reference" ? config.references.filter((item): item is string => !!item) : [];
   return {
+    model: "h3",
+    mode: config.mode,
     prompt: config.prompt,
     steps: config.steps,
     seed: config.seed,
@@ -61,16 +67,47 @@ export function payloadFor(config: RunConfig) {
     speed: config.speed,
     budget: config.budget,
     sage: config.sage,
-    first_frame: config.firstFrame ?? "",
-    last_frame: config.lastFrame ?? "",
+    dit_choice: config.ditChoice,
+    first_frame: config.mode === "image" ? config.firstFrame ?? "" : "",
+    last_frame: config.mode === "image" ? config.lastFrame ?? "" : "",
+    references,
+    ref_choice: config.refChoice,
+    ref_image_size: config.refImageSize,
   };
+}
+
+function ltxPayload(config: LTXConfig) {
+  return {
+    model: "ltx",
+    mode: config.mode,
+    prompt: config.prompt,
+    negative: config.negative,
+    width: config.width,
+    height: config.height,
+    frames: config.frames,
+    fps: config.fps,
+    steps: config.stepsBase + (config.mode === "text" ? config.stepsRefine : 0),
+    steps_base: config.stepsBase,
+    steps_refine: config.stepsRefine,
+    sampler: config.sampler,
+    video_cfg: config.videoCfg,
+    audio_cfg: config.audioCfg,
+    seed: config.seed,
+    budget: config.budget,
+    first_frame: config.mode === "text" ? "" : config.firstFrame ?? "",
+    last_frame: config.mode === "firstlast" ? config.lastFrame ?? "" : "",
+  };
+}
+
+export function payloadFor(model: ModelId, h3: H3Config, ltx: LTXConfig) {
+  return model === "ltx" ? ltxPayload(ltx) : h3Payload(h3);
 }
 
 export const api = {
   status: () => request<BackendStatus>("/h3/status"),
   jobs: () => request<{ jobs: Job[] }>("/h3/jobs"),
-  generate: (config: RunConfig) =>
-    request<{ id: string }>("/h3/generate", post(payloadFor(config))),
+  generate: (model: ModelId, h3: H3Config, ltx: LTXConfig) =>
+    request<{ id: string }>("/h3/generate", post(payloadFor(model, h3, ltx))),
   loras: () => request<{ loras: string[] }>("/h3/loras"),
   addLora: (url: string) => request<{ name: string }>("/h3/lora", post({ url })),
   log: () => request<{ text: string }>("/h3/log"),

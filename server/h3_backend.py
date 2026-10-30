@@ -65,6 +65,8 @@ class Hub:
             "stage": "queued",
             "progress": None,
             "label": payload.get("label") or "render",
+            "model": payload.get("model") or "h3",
+            "mode": payload.get("mode") or "text",
             "seed": payload.get("seed"),
             "steps": payload.get("steps"),
             "frames": payload.get("frames"),
@@ -97,6 +99,13 @@ class Hub:
             for job in self.jobs:
                 if job["status"] == "running":
                     return job["id"]
+        return None
+
+    def running_model(self):
+        with self.lock:
+            for job in self.jobs:
+                if job["status"] == "running":
+                    return job.get("model")
         return None
 
     def queued_count(self):
@@ -214,6 +223,7 @@ def build_app(hooks):
             "backend": True,
             "comfy": stats is not None,
             "running": hub.running_id(),
+            "running_model": hub.running_model(),
             "queued": hub.queued_count(),
         }
         if stats:
