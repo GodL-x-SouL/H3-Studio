@@ -1,6 +1,7 @@
-# H3 Studio
+# H3 + LTX Studio
 
-Web UI for the MiniMax H3 + LTX-2.5 Colab lab: a Vite + React + Tailwind frontend that
+Web UI for the MiniMax H3 + LTX-2.5 Colab lab (named for the two model families it
+serves, not for H3 alone): a Vite + React + Tailwind frontend that
 talks to ComfyUI on the Colab VM through a small Python backend, designed to be exposed
 with a single cloudflared tunnel from the notebook.
 
@@ -13,7 +14,8 @@ when a job switches model family, because H3 runs with `--force-fp16` and LTX do
 ## Layout
 
 ```
-dist/                  built WebUI (committed; the notebook serves this directly)
+dist/                  built WebUI (the notebook rebuilds it on Colab; committed so a
+                       fresh checkout runs without Node)
 server/h3_backend.py   aiohttp server: static dist + ComfyUI reverse proxy (HTTP/WS)
                        + /h3/* API (jobs, loras, setup, uploads, log)
 src/                   frontend source (React + TS + Tailwind v4)
@@ -41,13 +43,37 @@ LTX has no reference mode in this stack (no IC-LoRA model is downloaded).
 3. `02` — downloads the selected model sets (`MODEL_SET=both|h3|ltx`): H3 FL2VA and
    Ref2VA GGUF, H3 text encoder + VAEs + turbo LoRA; LTX DiT + gemma4 TE + VAEs + x2
    upscaler. Resumable, size-checked.
-4. `03` — starts ComfyUI, clones this repo to `/content/h3lab/H3-Studio`, starts the
-   backend on `127.0.0.1:8000`, opens the cloudflared tunnel and prints the URL. It
-   keeps running; stopping it tears everything down and frees the ports.
+4. `03` — starts ComfyUI, clones the `testing` branch to `/content/h3lab/H3-Studio`,
+   builds the UI there (`npm ci && npm run build`, with a local Node 22 because Vite 8
+   needs >= 20.19), starts the backend on `127.0.0.1:8000`, opens the cloudflared tunnel
+   and shows the URL inside the cell's output box. It keeps running; stopping it tears
+   everything down and frees the ports.
+
+The cell's `STUDIO_BRANCH` constant is the single place to point the notebook at another
+branch; the checkout is hard-reset to it on every run, so what the tunnel serves always
+matches that branch.
 
 The backend serves the UI and proxies ComfyUI, so the single tunnel URL is all the
 browser needs. The `/h3` API drives jobs (encode → sample → decode for H3, staged base →
 upscale → refine for LTX), LoRA downloads, frame uploads, setup actions and log tailing.
+
+## VRAM preflight
+
+Peak VRAM on the T4 lab runs put both stacks on one line — resident weights plus about
+0.10 GiB per megapixel-frame:
+
+| run | geometry | measured |
+| --- | --- | --- |
+| H3 Q3_K_M, safe fp16 | 864x480 · 124 f | 13.81 GiB peak on a 15 GiB T4 |
+| LTX 22B UD-Q2_K_XL | 640x384 final (320x192 base) · 121 f | ~12.4 GiB free before the refine pass |
+
+Before a job starts (and before ComfyUI restarts or the prompt is encoded), the
+notebook's `build_cfg` (H3) and `build_ltx_cfg` (LTX) estimate the working set and refuse
+a run that cannot fit, e.g. *"H3 2560x1440 at 124 frames needs about 54.6 GiB… Tesla T4
+has 15.0 GiB"*. The UI runs the same arithmetic from `/h3/status` and disables **Generate**
+for that geometry, naming the largest preset that still fits. On a T4 that is Draft or
+Preview; 1080p and 2K need a bigger GPU. Estimator constants live in `src/types.ts`
+(`vramNeedGiB`) and in the notebook's preflight block — keep the two in sync.
 
 ## Local development
 
@@ -71,7 +97,7 @@ python3 server/h3_backend.py --dist dist --port 8000
 | `GET  /h3/jobs`         | job list (model, stage, progress, meta, video, errors) |
 | `POST /h3/generate`     | queue a run from the UI config (`model: h3|ltx`)     |
 | `POST /h3/cancel`       | cancel queued/running job (interrupts ComfyUI)       |
-| `GET  /h3/loras`        | loras present in ComfyUI/models/loras (H3)           |
+| `GET  /h3/loras`        | LoRA files in ComfyUI/models/loras (H3 + LTX stacks) |
 | `POST /h3/lora`         | download a `.safetensors` LoRA (HF or direct URL)    |
 | `POST /h3/upload`       | stage a first/last/reference frame image             |
 | `GET  /h3/output?file=` | serve a produced video from ComfyUI/output           |

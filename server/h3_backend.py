@@ -1,4 +1,4 @@
-"""H3 Studio backend for Colab.
+"""H3 + LTX Studio backend for Colab.
 
 Serves the built WebUI, reverse-proxies ComfyUI (HTTP + WebSocket), and exposes a
 small /h3 API that the notebook hooks into (job runner, LoRA store, setup, logs).
@@ -45,6 +45,25 @@ def _now():
     return time.time()
 
 
+def _progress_value(current, value):
+    """Clamp progress to 0..1 and never let a job's bar move backwards.
+
+    The job runner reports a percentage per stage and sometimes has nothing to
+    report (model load, VAE decode); keeping the highest value seen means the UI
+    shows a bar that starts at zero, advances and always reaches 100%.
+    """
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return current
+    if value != value:  # NaN
+        return current
+    value = min(1.0, max(0.0, value))
+    if current is None:
+        return value
+    return max(float(current), value)
+
+
 class Hub:
     """In-memory job store + single worker thread (the GPU runs one job at a time)."""
 
@@ -63,7 +82,7 @@ class Hub:
             "payload": dict(payload),
             "status": "queued",
             "stage": "queued",
-            "progress": None,
+            "progress": 0.0,
             "label": payload.get("label") or "render",
             "model": payload.get("model") or "h3",
             "mode": payload.get("mode") or "text",
@@ -136,6 +155,9 @@ class Hub:
 
             def update(_job=job, **fields):
                 with self.lock:
+                    if "progress" in fields:
+                        fields["progress"] = _progress_value(_job.get("progress"),
+                                                            fields["progress"])
                     _job.update(fields)
 
             with self.lock:
@@ -508,7 +530,7 @@ if __name__ == "__main__":
     import argparse
     import sys
 
-    parser = argparse.ArgumentParser(description="H3 Studio backend (dev mode)")
+    parser = argparse.ArgumentParser(description="H3 + LTX Studio backend (dev mode)")
     parser.add_argument("--dist", required=True)
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--comfy", default="http://127.0.0.1:8188")

@@ -144,6 +144,7 @@ export default function App() {
             loras={loras}
             onAddLora={addLora}
             online={online}
+            status={status}
             onGenerate={generate}
           />
         </div>

@@ -1,4 +1,4 @@
-import type { H3Config, LTXConfig, ModelId } from "./types";
+import { h3Size, ltxSize, type H3Config, type LoraEntry, type LTXConfig, type ModelId } from "./types";
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 
@@ -48,9 +48,17 @@ const post = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+function loraPayload(loras: LoraEntry[]) {
+  return loras
+    .filter((entry) => entry.name && entry.name !== "off")
+    .map((entry) => ({ name: entry.name, strength: entry.strength }));
+}
+
 function h3Payload(config: H3Config) {
   const references =
     config.mode === "reference" ? config.references.filter((item): item is string => !!item) : [];
+  const loras = loraPayload(config.loras);
+  const [width, height] = h3Size(config);
   return {
     model: "h3",
     mode: config.mode,
@@ -58,10 +66,15 @@ function h3Payload(config: H3Config) {
     steps: config.steps,
     seed: config.seed,
     ratio: config.ratio,
+    width,
+    height,
     frames: config.frames,
-    scale: config.scale,
-    lora: config.lora,
-    strength: config.strength,
+    // Legacy notebooks derive their gear from scale; new ones use width/height.
+    scale: 100,
+    loras,
+    // Kept for notebook builds that predate the LoRA stack.
+    lora: loras[0]?.name ?? "off",
+    strength: loras[0]?.strength ?? 1,
     dtype: config.dtype,
     triton: config.triton,
     speed: config.speed,
@@ -77,13 +90,15 @@ function h3Payload(config: H3Config) {
 }
 
 function ltxPayload(config: LTXConfig) {
+  const [width, height] = ltxSize(config);
   return {
     model: "ltx",
     mode: config.mode,
     prompt: config.prompt,
     negative: config.negative,
-    width: config.width,
-    height: config.height,
+    ratio: config.ratio,
+    width,
+    height,
     frames: config.frames,
     fps: config.fps,
     steps: config.stepsBase + (config.mode === "text" ? config.stepsRefine : 0),
@@ -94,6 +109,7 @@ function ltxPayload(config: LTXConfig) {
     audio_cfg: config.audioCfg,
     seed: config.seed,
     budget: config.budget,
+    loras: loraPayload(config.loras),
     first_frame: config.mode === "text" ? "" : config.firstFrame ?? "",
     last_frame: config.mode === "firstlast" ? config.lastFrame ?? "" : "",
   };

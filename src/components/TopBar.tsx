@@ -25,7 +25,9 @@ export default function TopBar({
         <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-primary text-primary-ink">
           <Sparkles size={15} />
         </span>
-        <span className="text-[15px] font-semibold tracking-tight text-ink">H3 Studio</span>
+        <span className="text-[15px] font-semibold tracking-tight text-ink">
+          H3 + LTX Studio
+        </span>
       </div>
       <div className="h-6 w-px shrink-0 bg-line" />
       <div className="flex shrink-0 items-center gap-1 rounded-full bg-chip p-1">

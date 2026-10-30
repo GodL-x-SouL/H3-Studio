@@ -1,21 +1,59 @@
 import { useEffect, useState } from "react";
 import { ImagePlus, Sparkles } from "lucide-react";
+import LoraEditor from "./LoraEditor";
+import ResolutionField from "./ResolutionField";
 import { Section, Segmented, Select, SliderRow, ToggleRow } from "./controls";
+import type { BackendStatus } from "../api";
 import {
   H3_DIT_CHOICES,
   H3_REF_CHOICES,
   H3_REF_IMAGE_SIZES,
-  LTX_HEIGHTS,
+  H3_RESOLUTIONS,
+  H3_WEIGHTS_GIB,
+  LTX_RESOLUTIONS,
   LTX_SAMPLERS,
-  LTX_WIDTHS,
+  LTX_WEIGHTS_GIB,
+  VRAM_RESERVE_GIB,
+  dimsForResolution,
+  h3Size,
+  ltxSize,
+  vramNeedGiB,
   type DType,
   type H3Config,
   type LTXConfig,
   type LTXSampler,
   type ModelId,
   type Ratio,
+  type ResolutionPreset,
   type Speed,
 } from "../types";
+
+function VramCheck({
+  need,
+  total,
+  largest,
+}: {
+  need: number;
+  total: number | null;
+  largest: ResolutionPreset | null;
+}) {
+  if (total === null) return null;
+  const budget = total - VRAM_RESERVE_GIB;
+  const over = need > budget;
+  return (
+    <p
+      className={`text-[10.5px] leading-relaxed tabular-nums ${
+        over ? "text-red-500 dark:text-red-400" : "text-faint"
+      }`}
+    >
+      {over
+        ? `≈${need.toFixed(1)} GiB of VRAM needed at this geometry; this GPU has ${total.toFixed(1)} GiB. The job is refused before it starts`
+        : `≈${need.toFixed(1)} GiB of the ${total.toFixed(1)} GiB this GPU has`}
+      {over && largest ? ` — largest preset that fits: ${largest.label}.` : "."}
+      {over && !largest ? " — shorten the clip or use a bigger GPU." : ""}
+    </p>
+  );
+}
 
 const H3_TABS = ["Video", "Adjustment", "Animation"] as const;
 const LTX_TABS = ["Video", "Sampling"] as const;
@@ -47,6 +85,7 @@ export default function RightPanel({
   loras,
   onAddLora,
   online,
+  status,
   onGenerate,
 }: {
   model: ModelId;
@@ -57,6 +96,7 @@ export default function RightPanel({
   loras: string[];
   onAddLora: (url: string) => Promise<string>;
   online: boolean;
+  status: BackendStatus | null;
   onGenerate: () => Promise<string>;
 }) {
   const isH3 = model === "h3";
@@ -66,39 +106,44 @@ export default function RightPanel({
     sampling: true,
     geometry: true,
     seed: true,
+    loras: true,
     model: false,
     precision: true,
     accel: true,
     budget: false,
     keyframes: true,
   });
-  const [loraUrl, setLoraUrl] = useState("");
-  const [loraBusy, setLoraBusy] = useState(false);
-  const [loraNote, setLoraNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [genBusy, setGenBusy] = useState(false);
   const [genNote, setGenNote] = useState<{ ok: boolean; text: string } | null>(null);
   const toggle = (id: string) => setOpen((state) => ({ ...state, [id]: !state[id] }));
 
+  // Same preflight the notebook runs server-side, so an impossible geometry is visible
+  // (and unclickable) before a job spends minutes loading the model.
+  const presets = isH3 ? H3_RESOLUTIONS : LTX_RESOLUTIONS;
+  const align = isH3 ? 32 : 64;
+  const ratio = isH3 ? h3.ratio : ltx.ratio;
+  const frames = isH3 ? h3.frames : ltx.frames;
+  const [geomWidth, geomHeight] = isH3 ? h3Size(h3) : ltxSize(ltx);
+  const weights = isH3
+    ? (H3_WEIGHTS_GIB[h3.mode === "reference" ? h3.refChoice : h3.ditChoice] ?? 8.85)
+    : LTX_WEIGHTS_GIB;
+  const vramTotal = status?.vram_total_mib ? status.vram_total_mib / 1024 : null;
+  const vramNeed = vramNeedGiB(weights, geomWidth, geomHeight, frames);
+  let largestFit: ResolutionPreset | null = null;
+  if (vramTotal !== null) {
+    for (const preset of presets) {
+      const [width, height] = dimsForResolution(preset, ratio, align);
+      if (vramNeedGiB(weights, width, height, frames) <= vramTotal - VRAM_RESERVE_GIB) {
+        largestFit = preset;
+      }
+    }
+  }
+  const overBudget =
+    vramTotal !== null && vramNeed > vramTotal - VRAM_RESERVE_GIB;
+
   useEffect(() => {
     setTab("Video");
   }, [model]);
-
-  const downloadLora = async () => {
-    const url = loraUrl.trim();
-    if (!url) return;
-    setLoraBusy(true);
-    setLoraNote(null);
-    try {
-      const name = await onAddLora(url);
-      patchH3({ lora: name });
-      setLoraUrl("");
-      setLoraNote({ ok: true, text: `${name} added — selected in the dropdown` });
-    } catch (exc) {
-      setLoraNote({ ok: false, text: exc instanceof Error ? exc.message : String(exc) });
-    } finally {
-      setLoraBusy(false);
-    }
-  };
 
   const generate = async () => {
     setGenBusy(true);
@@ -164,12 +209,25 @@ export default function RightPanel({
                   onToggle={() => toggle("geometry")}
                   info
                 >
-                  <Segmented
-                    options={RATIOS}
-                    value={h3.ratio}
-                    onChange={(value) => patchH3({ ratio: value })}
-                    size="sm"
+                  <div className="space-y-2">
+                    <span className="text-[12px] font-medium text-soft">Aspect ratio</span>
+                    <Segmented
+                      options={RATIOS}
+                      value={h3.ratio}
+                      onChange={(value) => patchH3({ ratio: value })}
+                      size="sm"
+                    />
+                  </div>
+                  <ResolutionField
+                    presets={H3_RESOLUTIONS}
+                    ratio={h3.ratio}
+                    align={32}
+                    value={h3.resolution}
+                    onChange={(id) => patchH3({ resolution: id })}
+                    stage={() => "native single pass — H3 renders at the picked size, no upscale stage"}
+                    hint="H3 renders natively and needs multiples of 32. Preview (864×480) is the tested T4 default; 1080p and 2K are experimental on a T4."
                   />
+                  <VramCheck need={vramNeed} total={vramTotal} largest={largestFit} />
                   <SliderRow
                     label="Frames"
                     value={h3.frames}
@@ -178,14 +236,6 @@ export default function RightPanel({
                     step={17}
                     onChange={(value) => patchH3({ frames: value })}
                     display={(value) => `${value}f`}
-                  />
-                  <SliderRow
-                    label="Scale"
-                    value={h3.scale}
-                    min={50}
-                    max={100}
-                    onChange={(value) => patchH3({ scale: value })}
-                    display={(value) => `${value}%`}
                   />
                 </Section>
                 <Section title="Model" open={!!open.model} onToggle={() => toggle("model")}>
@@ -246,59 +296,14 @@ export default function RightPanel({
                     </p>
                   ) : (
                     <>
-                      <div className="space-y-2">
-                        <span className="text-[12px] font-medium text-soft">Turbo LoRA</span>
-                        <Select
-                          value={h3.lora}
-                          options={loras}
-                          onChange={(value) => patchH3({ lora: value })}
-                          placeholder="off"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <span className="text-[12px] font-medium text-soft">Custom LoRA</span>
-                        <div className="flex items-center gap-2">
-                          <input
-                            value={loraUrl}
-                            onChange={(event) => setLoraUrl(event.target.value)}
-                            placeholder="huggingface.co/…/name.safetensors"
-                            spellCheck={false}
-                            className="min-w-0 flex-1 rounded-lg border border-line bg-chip/60 px-2.5 py-1.5 text-[12px] text-ink outline-none transition-colors placeholder:text-faint focus:border-edge"
-                          />
-                          <button
-                            type="button"
-                            disabled={!online || loraBusy}
-                            onClick={() => void downloadLora()}
-                            className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
-                          >
-                            {loraBusy ? "…" : "Add"}
-                          </button>
-                        </div>
-                        {loraNote ? (
-                          <p
-                            className={`text-[11px] leading-relaxed ${
-                              loraNote.ok
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : "text-red-500 dark:text-red-400"
-                            }`}
-                          >
-                            {loraNote.text}
-                          </p>
-                        ) : (
-                          <p className="text-[11px] leading-relaxed text-faint">
-                            Downloads into ComfyUI/models/loras on the Colab VM and lands in
-                            the dropdown above.
-                          </p>
-                        )}
-                      </div>
-                      <SliderRow
-                        label="Strength"
-                        value={h3.strength}
-                        min={0}
-                        max={2}
-                        step={0.05}
-                        onChange={(value) => patchH3({ strength: value })}
-                        display={(value) => value.toFixed(2)}
+                      <span className="text-[12px] font-medium text-soft">LoRA stack</span>
+                      <LoraEditor
+                        value={h3.loras}
+                        options={loras}
+                        onChange={(next) => patchH3({ loras: next })}
+                        online={online}
+                        onAddLora={onAddLora}
+                        hint="Chained in order on the H3 DiT — turbo-format LoRAs use the H3 turbo node, ComfyUI-format ones the standard loader."
                       />
                     </>
                   )}
@@ -398,24 +403,25 @@ export default function RightPanel({
                   onToggle={() => toggle("geometry")}
                   info
                 >
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2">
-                      <span className="text-[12px] font-medium text-soft">Width</span>
-                      <Select
-                        value={String(ltx.width)}
-                        options={LTX_WIDTHS.map(String)}
-                        onChange={(value) => patchLTX({ width: Number(value) })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <span className="text-[12px] font-medium text-soft">Height</span>
-                      <Select
-                        value={String(ltx.height)}
-                        options={LTX_HEIGHTS.map(String)}
-                        onChange={(value) => patchLTX({ height: Number(value) })}
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <span className="text-[12px] font-medium text-soft">Aspect ratio</span>
+                    <Segmented
+                      options={RATIOS}
+                      value={ltx.ratio}
+                      onChange={(value) => patchLTX({ ratio: value })}
+                      size="sm"
+                    />
                   </div>
+                  <ResolutionField
+                    presets={LTX_RESOLUTIONS}
+                    ratio={ltx.ratio}
+                    align={64}
+                    value={ltx.resolution}
+                    onChange={(id) => patchLTX({ resolution: id })}
+                    stage={(width, height) => `base ${width / 2}×${height / 2} → x2 refine`}
+                    hint="LTX renders a half-res base then x2-refines, so these are final sizes; it needs multiples of 64. Preview (640×384) is the tested T4 default; 1080p and 2K need a bigger GPU."
+                  />
+                  <VramCheck need={vramNeed} total={vramTotal} largest={largestFit} />
                   <SliderRow
                     label="Frames"
                     value={ltx.frames}
@@ -433,9 +439,6 @@ export default function RightPanel({
                     onChange={(value) => patchLTX({ fps: value })}
                     display={(value) => String(value)}
                   />
-                  <p className="text-[11px] leading-relaxed text-faint">
-                    Width and height must be multiples of 64. 640×384 is the tested T4 default.
-                  </p>
                 </Section>
                 <Section title="Seed & Prompt" open={!!open.seed} onToggle={() => toggle("seed")}>
                   <div className="space-y-2">
@@ -458,6 +461,16 @@ export default function RightPanel({
                       className="w-full resize-none rounded-lg border border-line bg-chip/60 p-2.5 text-[12px] leading-relaxed text-ink outline-none transition-colors placeholder:text-faint focus:border-edge"
                     />
                   </div>
+                </Section>
+                <Section title="LoRA stack" open={!!open.loras} onToggle={() => toggle("loras")}>
+                  <LoraEditor
+                    value={ltx.loras}
+                    options={loras}
+                    onChange={(next) => patchLTX({ loras: next })}
+                    online={online}
+                    onAddLora={onAddLora}
+                    hint="Chained on the LTX DiT for base, refine and guide passes; downloads land in ComfyUI/models/loras."
+                  />
                 </Section>
               </>
             ) : null}
@@ -540,12 +553,23 @@ export default function RightPanel({
 
       <button
         type="button"
-        disabled={!online || genBusy}
+        disabled={!online || genBusy || overBudget}
+        title={
+          overBudget
+            ? `This geometry needs ≈${vramNeed.toFixed(1)} GiB; the GPU reports ${vramTotal?.toFixed(1)} GiB`
+            : undefined
+        }
         onClick={() => void generate()}
         className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-[13px] font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         <Sparkles size={14} />
-        {genBusy ? "Queueing…" : online ? "Generate" : "Backend offline"}
+        {genBusy
+          ? "Queueing…"
+          : !online
+            ? "Backend offline"
+            : overBudget
+              ? "Doesn't fit this GPU"
+              : "Generate"}
       </button>
       {genNote ? (
         <p
