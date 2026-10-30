@@ -8,7 +8,7 @@ import {
   X,
 } from "lucide-react";
 import { Switch } from "./controls";
-import { api, type Job } from "../api";
+import { api, mediaUrl, type Job } from "../api";
 import {
   type H3Config,
   type H3Mode,
@@ -105,6 +105,9 @@ function DropCard({
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [broken, setBroken] = useState(false);
+
+  useEffect(() => setBroken(false), [value]);
 
   const change = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -123,6 +126,7 @@ function DropCard({
   };
 
   const name = value ? value.split("/").pop() : null;
+  const preview = mediaUrl(value);
 
   return (
     <div className="rounded-xl border border-line p-1.5">
@@ -141,6 +145,22 @@ function DropCard({
             <span className="text-[11px] font-medium">{busy ? "uploading…" : label}</span>
           </span>
         )}
+        {preview && !broken ? (
+          <img
+            src={preview}
+            alt={label}
+            onError={() => setBroken(true)}
+            className="absolute inset-0 h-full w-full rounded-lg object-cover"
+          />
+        ) : null}
+        {value && broken ? (
+          <span className="flex flex-col items-center gap-1.5 px-2 text-faint">
+            <ImagePlus size={16} />
+            <span className="line-clamp-2 text-[10px] font-medium break-all">
+              {name ?? label}
+            </span>
+          </span>
+        ) : null}
         {value ? (
           <span className="absolute right-1.5 bottom-1.5 grid h-5 w-5 place-items-center rounded-full bg-primary/80 text-primary-ink">
             <X size={11} />

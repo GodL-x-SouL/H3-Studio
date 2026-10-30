@@ -42,6 +42,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+/** Uploaded frames live on the notebook's disk; /h3/media serves them by name. */
+export function mediaUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (/^(?:https?|data|blob):/i.test(value)) return value;
+  return `/h3/media?file=${encodeURIComponent(value)}`;
+}
+
 const post = (body: unknown): RequestInit => ({
   method: "POST",
   headers: { "Content-Type": "application/json" },

@@ -100,6 +100,7 @@ python3 server/h3_backend.py --dist dist --port 8000
 | `GET  /h3/loras`        | LoRA files in ComfyUI/models/loras (H3 + LTX stacks) |
 | `POST /h3/lora`         | download a `.safetensors` LoRA (HF or direct URL)    |
 | `POST /h3/upload`       | stage a first/last/reference frame image             |
+| `GET  /h3/media?file=`  | serve a staged upload (Frames tab thumbnail)         |
 | `GET  /h3/output?file=` | serve a produced video from ComfyUI/output           |
 | `GET  /h3/log`          | ComfyUI log tail                                     |
 | `GET/POST /h3/setup`    | H3 method toggles (fp16 fix, FP16Safe, Spectrum, …)  |

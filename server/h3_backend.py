@@ -15,6 +15,7 @@ Hook contract (all optional except make_job/log_tail):
     dist_dir        str   directory with the built WebUI (index.html + assets/)
     comfy_url       str   default "http://127.0.0.1:8188"
     output_dir      str   ComfyUI output dir (served via /h3/output?file=<rel>)
+    upload_dir      str   staged frame uploads (served via /h3/media?file=<path>)
     make_job        fn(payload, update, cancel_event) -> {"video_file": path|None, ...}
     list_loras      fn() -> [names]           (first entry should be "off")
     download_lora   fn(url) -> name           (raise on failure)
@@ -214,6 +215,7 @@ def build_app(hooks):
     comfy = hooks.get("comfy_url", "http://127.0.0.1:8188").rstrip("/")
     comfy_ws = comfy.replace("https://", "wss://").replace("http://", "ws://") + "/ws"
     output_dir = Path(hooks["output_dir"]).resolve() if hooks.get("output_dir") else None
+    upload_dir = Path(hooks["upload_dir"]).resolve() if hooks.get("upload_dir") else None
     hub = Hub(hooks)
     app = web.Application(client_max_size=256 * 1024 * 1024)
     app["hub"] = hub
@@ -369,14 +371,35 @@ def build_app(hooks):
                 {"error": "%s: %s" % (type(exc).__name__, str(exc)[:400])}, status=500)
         return web.json_response({"rows": rows})
 
+    def _inside(base, rel):
+        target = (base / rel).resolve()
+        if target != base and not str(target).startswith(str(base) + "/"):
+            return None
+        return target if target.is_file() else None
+
     async def output(request):
         if output_dir is None:
             return web.json_response({"error": "no output dir"}, status=404)
         rel = request.query.get("file", "")
-        target = (output_dir / rel).resolve()
-        if not str(target).startswith(str(output_dir)) or not target.is_file():
+        target = _inside(output_dir, rel)
+        # Query strings decode "+" as a space, and ComfyUI file names legitimately
+        # contain "+" (LTX labels look like "..._8+3r_..."). Retry the other reading
+        # so links from a client that did not URL-encode still resolve.
+        if target is None and " " in rel:
+            target = _inside(output_dir, rel.replace(" ", "+"))
+        if target is None:
             return web.json_response({"error": "no such file"}, status=404)
         return web.FileResponse(target)
+
+    async def media(request):
+        """Serve a staged frame upload so the Frames tab can show its thumbnail."""
+        if upload_dir is None:
+            return web.json_response({"error": "no upload dir"}, status=404)
+        name = Path(request.query.get("file", "")).name
+        target = _inside(upload_dir, name) if name else None
+        if target is None:
+            return web.json_response({"error": "no such file"}, status=404)
+        return web.FileResponse(target, headers={"Cache-Control": "private, max-age=86400"})
 
     async def ws_proxy(request):
         server = web.WebSocketResponse()
@@ -465,6 +488,7 @@ def build_app(hooks):
         web.get("/h3/loras", loras),
         web.post("/h3/lora", add_lora),
         web.post("/h3/upload", upload),
+        web.get("/h3/media", media),
         web.get("/h3/log", log),
         web.get("/h3/setup", setup_get),
         web.post("/h3/setup", setup_post),
