@@ -79,7 +79,7 @@ export const defaultH3Config: H3Config = {
   steps: 6,
   seed: 42,
   ditChoice: "abiray_Q3_K_M",
-  loras: [{ name: "minimax_h3_turbo_v4_step600_ema", strength: 1 }],
+  loras: [{ name: "minimax_h3_turbo_v4_step600_ema.safetensors", strength: 1 }],
   dtype: "safe_fp16",
   sage: true,
   triton: true,
@@ -115,8 +115,8 @@ export const defaultLTXConfig: LTXConfig = {
 
 export const LORA_CHOICES = [
   "off",
-  "minimax_h3_turbo_v4_step600_ema",
-  "minimax_h3_turbo_4step_ema_ckpt850",
+  "minimax_h3_turbo_v4_step600_ema.safetensors",
+  "minimax_h3_turbo_4step_ema_ckpt850.safetensors",
 ];
 
 export const H3_DIT_CHOICES = ["abiray_Q3_K_M", "abiray_Q4_K_M"];

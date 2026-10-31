@@ -50,22 +50,29 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let timer = 0;
     const tick = async () => {
+      let active = false;
       try {
         const [nextStatus, nextJobs] = await Promise.all([api.status(), api.jobs()]);
         if (cancelled) return;
         setOnline(true);
         setStatus(nextStatus);
         setJobs(nextJobs.jobs);
+        active = nextJobs.jobs.some(
+          (job) => job.status === "running" || job.status === "queued",
+        );
       } catch {
         if (!cancelled) setOnline(false);
       }
+      // Poll faster while the GPU is busy so the preview bar tracks the sampler;
+      // fall back to a relaxed interval when everything is idle.
+      if (!cancelled) timer = window.setTimeout(tick, active ? 1000 : 4000);
     };
     void tick();
-    const id = window.setInterval(tick, 2500);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      window.clearTimeout(timer);
     };
   }, []);
 
