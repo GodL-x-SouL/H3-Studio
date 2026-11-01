@@ -13,6 +13,7 @@ import {
   LTX_RESOLUTIONS,
   LTX_SAMPLERS,
   LTX_WEIGHTS_GIB,
+  VRAM_ADVISORY_AREA,
   VRAM_RESERVE_GIB,
   dimsForResolution,
   h3Size,
@@ -32,25 +33,38 @@ function VramCheck({
   need,
   total,
   largest,
+  advisory,
 }: {
   need: number;
   total: number | null;
   largest: ResolutionPreset | null;
+  advisory: boolean;
 }) {
   if (total === null) return null;
   const budget = total - VRAM_RESERVE_GIB;
   const over = need > budget;
+  if (!over) {
+    return (
+      <p className="text-[10.5px] leading-relaxed tabular-nums text-faint">
+        ≈{need.toFixed(1)} GiB of the {total.toFixed(1)} GiB this GPU has.
+      </p>
+    );
+  }
+  if (advisory) {
+    return (
+      <p className="text-[10.5px] leading-relaxed tabular-nums text-amber-600 dark:text-amber-400">
+        ≈{need.toFixed(1)} GiB estimated at this geometry; this GPU has {total.toFixed(1)} GiB.
+        Up to 720p is allowed through — it may spill to system RAM or OOM, so watch the
+        Console tab. Preview remains the tested T4 default.
+      </p>
+    );
+  }
   return (
-    <p
-      className={`text-[10.5px] leading-relaxed tabular-nums ${
-        over ? "text-red-500 dark:text-red-400" : "text-faint"
-      }`}
-    >
-      {over
-        ? `≈${need.toFixed(1)} GiB of VRAM needed at this geometry; this GPU has ${total.toFixed(1)} GiB. The job is refused before it starts`
-        : `≈${need.toFixed(1)} GiB of the ${total.toFixed(1)} GiB this GPU has`}
-      {over && largest ? ` — largest preset that fits: ${largest.label}.` : "."}
-      {over && !largest ? " — shorten the clip or use a bigger GPU." : ""}
+    <p className="text-[10.5px] leading-relaxed tabular-nums text-red-500 dark:text-red-400">
+      ≈{need.toFixed(1)} GiB of VRAM needed at this geometry; this GPU has {total.toFixed(1)} GiB.
+      The job is refused before it starts
+      {largest ? ` — largest preset that fits: ${largest.label}.` : "."}
+      {!largest ? " — shorten the clip or use a bigger GPU." : ""}
     </p>
   );
 }
@@ -140,6 +154,9 @@ export default function RightPanel({
   }
   const overBudget =
     vramTotal !== null && vramNeed > vramTotal - VRAM_RESERVE_GIB;
+  // 720p and below only warns; above 720p the preflight refuses the job.
+  const overBudgetAdvisory = geomWidth * geomHeight <= VRAM_ADVISORY_AREA;
+  const blocked = overBudget && !overBudgetAdvisory;
 
   useEffect(() => {
     setTab("Video");
@@ -225,9 +242,14 @@ export default function RightPanel({
                     value={h3.resolution}
                     onChange={(id) => patchH3({ resolution: id })}
                     stage={() => "native single pass — H3 renders at the picked size, no upscale stage"}
-                    hint="H3 renders natively and needs multiples of 32. Preview (864×480) is the tested T4 default; 1080p and 2K are experimental on a T4."
+                    hint="H3 renders natively and needs multiples of 32. Preview (864×480) is the tested T4 default; up to 720p runs with a warning, 1080p/2K are refused."
                   />
-                  <VramCheck need={vramNeed} total={vramTotal} largest={largestFit} />
+                  <VramCheck
+                    need={vramNeed}
+                    total={vramTotal}
+                    largest={largestFit}
+                    advisory={overBudgetAdvisory}
+                  />
                   <SliderRow
                     label="Frames"
                     value={h3.frames}
@@ -419,9 +441,14 @@ export default function RightPanel({
                     value={ltx.resolution}
                     onChange={(id) => patchLTX({ resolution: id })}
                     stage={(width, height) => `base ${width / 2}×${height / 2} → x2 refine`}
-                    hint="LTX renders a half-res base then x2-refines, so these are final sizes; it needs multiples of 64. Preview (640×384) is the tested T4 default; 1080p and 2K need a bigger GPU."
+                    hint="LTX renders a half-res base then x2-refines, so these are final sizes; it needs multiples of 64. Preview (640×384) is the tested T4 default; up to 720p runs with a warning, 1080p/2K need a bigger GPU."
                   />
-                  <VramCheck need={vramNeed} total={vramTotal} largest={largestFit} />
+                  <VramCheck
+                    need={vramNeed}
+                    total={vramTotal}
+                    largest={largestFit}
+                    advisory={overBudgetAdvisory}
+                  />
                   <SliderRow
                     label="Frames"
                     value={ltx.frames}
@@ -553,10 +580,10 @@ export default function RightPanel({
 
       <button
         type="button"
-        disabled={!online || genBusy || overBudget}
+        disabled={!online || genBusy || blocked}
         title={
           overBudget
-            ? `This geometry needs ≈${vramNeed.toFixed(1)} GiB; the GPU reports ${vramTotal?.toFixed(1)} GiB`
+            ? `This geometry needs ≈${vramNeed.toFixed(1)} GiB; the GPU reports ${vramTotal?.toFixed(1)} GiB${overBudgetAdvisory ? " (720p is allowed through; it may OOM)" : ""}`
             : undefined
         }
         onClick={() => void generate()}
@@ -567,9 +594,11 @@ export default function RightPanel({
           ? "Queueing…"
           : !online
             ? "Backend offline"
-            : overBudget
+            : blocked
               ? "Doesn't fit this GPU"
-              : "Generate"}
+              : overBudget
+                ? "Generate anyway"
+                : "Generate"}
       </button>
       {genNote ? (
         <p

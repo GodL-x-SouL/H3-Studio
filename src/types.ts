@@ -207,6 +207,9 @@ export function modeLabel(model: ModelId, mode: H3Mode | LTXMode): string {
 // used ~12.4 GiB. The notebook applies the same model server-side before a job starts.
 export const VRAM_GIB_PER_MP_FRAME = 0.1;
 export const VRAM_RESERVE_GIB = 0.4;
+// Up to 720p the estimate is advisory: the job is allowed through with a warning so it
+// can be tested on a T4. Above this area (1080p/2K presets) the preflight stays enforced.
+export const VRAM_ADVISORY_AREA = 1344 * 768;
 
 export const H3_WEIGHTS_GIB: Record<string, number> = {
   abiray_Q3_K_M: 8.85,

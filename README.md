@@ -5,11 +5,12 @@ serves, not for H3 alone): a Vite + React + Tailwind frontend that
 talks to ComfyUI on the Colab VM through a small Python backend, designed to be exposed
 with a single cloudflared tunnel from the notebook.
 
-Both models share one ComfyUI install (0.33.0), one backend and one tunnel. The model
-switch in the top bar swaps the whole settings surface: H3 jobs use the FL2VA / Ref2VA
-GGUF stacks with the H3-only method nodes, LTX-2.5 jobs use its 22B distilled DiT,
-gemma4 text encoder, dual VAEs and x2 latent upscaler. ComfyUI restarts automatically
-when a job switches model family, because H3 runs with `--force-fp16` and LTX does not.
+Both models share one ComfyUI install (`COMFY_CHANNEL` in cell 01: `stable` = 0.33.0,
+`latest` = 0.43.2), one backend and one tunnel. The model switch in the top bar swaps the
+whole settings surface: H3 jobs use the FL2VA / Ref2VA GGUF stacks with the H3-only
+method nodes, LTX-2.5 jobs use its 22B distilled DiT, gemma4 text encoder, dual VAEs and
+x2 latent upscaler. ComfyUI restarts automatically when a job switches model family,
+because H3 runs with `--force-fp16` and LTX does not.
 
 ## Layout
 
@@ -37,9 +38,11 @@ LTX has no reference mode in this stack (no IC-LoRA model is downloaded).
 
 1. `00` — environment check and shared helpers (ComfyUI paths, process control, graph
    validation, log parsing).
-2. `01` — pins ComfyUI 0.33.0, ComfyUI-GGUF, the H3 Turbo nodes and patches the GGUF
-   loader for both `minimax_h3` and LTX-2.5 (`gemma4` arch, ltxv fp32 tensors, gemma4
-   tokenizer bytes, fp16 embedding dequant). Writes the H3Lab + LTX25Lab control nodes.
+2. `01` — pins ComfyUI (`COMFY_CHANNEL`, stable 0.33.0 / latest 0.43.2), ComfyUI-GGUF,
+   the H3 Turbo nodes and patches the GGUF loader for both `minimax_h3` and LTX-2.5
+   (`gemma4` arch, ltxv fp32 tensors, gemma4 tokenizer bytes, fp16 embedding dequant).
+   On 0.43 it also adapts the GGUF patcher to the new `return_weight`/`force_cast`
+   `ModelPatcher` API. Writes the H3Lab + LTX25Lab control nodes.
 3. `02` — downloads the selected model sets (`MODEL_SET=both|h3|ltx`): H3 FL2VA and
    Ref2VA GGUF, H3 text encoder + VAEs + turbo LoRA; LTX DiT + gemma4 TE + VAEs + x2
    upscaler. Resumable, size-checked.
@@ -68,12 +71,43 @@ Peak VRAM on the T4 lab runs put both stacks on one line — resident weights pl
 | LTX 22B UD-Q2_K_XL | 640x384 final (320x192 base) · 121 f | ~12.4 GiB free before the refine pass |
 
 Before a job starts (and before ComfyUI restarts or the prompt is encoded), the
-notebook's `build_cfg` (H3) and `build_ltx_cfg` (LTX) estimate the working set and refuse
-a run that cannot fit, e.g. *"H3 2560x1440 at 124 frames needs about 54.6 GiB… Tesla T4
-has 15.0 GiB"*. The UI runs the same arithmetic from `/h3/status` and disables **Generate**
-for that geometry, naming the largest preset that still fits. On a T4 that is Draft or
-Preview; 1080p and 2K need a bigger GPU. Estimator constants live in `src/types.ts`
-(`vramNeedGiB`) and in the notebook's preflight block — keep the two in sync.
+notebook's `build_cfg` (H3) and `build_ltx_cfg` (LTX) estimate the working set. Up to
+**720p** (1344×768, the HD preset) the estimate is advisory: the job is allowed through
+with a warning so the T4 can be pushed past Preview. Above 720p the preflight stays
+enforced and refuses the run, e.g. *"H3 2560x1440 at 124 frames needs about 54.6 GiB…
+Tesla T4 has 15.0 GiB"*. The UI runs the same arithmetic from `/h3/status`: amber warning
+and **Generate anyway** up to 720p, red refusal and a disabled button for 1080p/2K (it
+names the largest preset that still fits). Estimator constants live in `src/types.ts`
+(`vramNeedGiB`, `VRAM_ADVISORY_AREA`) and in the notebook's preflight block — keep the two
+in sync.
+
+## ComfyUI 0.43.2 (channel `latest`)
+
+The 0.33 pin is what every T4 run so far used. 0.43.2 is wired up and structurally
+verified on CPU, but a full GPU render has not been observed yet, so it is opt-in:
+
+```python
+# cell 01
+COMFY_CHANNEL = "latest"   # 0.43.2; use "stable" to return to 0.33.0
+```
+
+What was verified against a clean 0.43.2 checkout (CPU, no weights):
+
+- H3Lab, LTX25Lab, ComfyUI-GGUF (patched), H3 Turbo, FP16Safe and Spectrum all import.
+- Every node in the H3 encode/sample and LTX encode → base → upscale → refine → decode
+  graphs exists with the inputs the notebook sends (`/object_info` + `validate_graph`).
+- H3's native `MiniMaxH3ImageToVideo` / `MiniMaxH3ReferenceToVideo` schemas are unchanged;
+  `minimax` and `ltxv` are still valid CLIP types; `--force-fp16`, `--bf16-unet`,
+  `--enable-triton-backend` and `--use-sage-attention` still exist.
+- GGUF's `GGMLOps.Linear` runs H3's fused `linear_input_act(..., "swiglu")` through the
+  0.43 eager fallback, and `GGUFModelPatcher` works after the `return_weight`/`force_cast`
+  shim (unit-checked on a CPU layer).
+
+Known risks still to watch on the first GPU run: 0.43 needs the new `comfy-kitchen` and
+`comfy-aimdo` wheels from `requirements.txt`, the untouched 2025 Turbo LoRA adapter is
+older than 0.43's `ComfyAttention` work, and GGUF dequantization itself cannot be
+exercised without weights. If anything regresses, set `COMFY_CHANNEL = "stable"` and
+rerun cell 01 (it hard-resets the checkout).
 
 ## Local development
 
