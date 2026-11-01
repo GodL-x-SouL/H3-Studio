@@ -109,6 +109,18 @@ older than 0.43's `ComfyAttention` work, and GGUF dequantization itself cannot b
 exercised without weights. If anything regresses, set `COMFY_CHANNEL = "stable"` and
 rerun cell 01 (it hard-resets the checkout).
 
+### GPU smoke test (T4, 2026-11-01)
+
+All of the CPU checks above reproduce on a real T4 session, and the Studio backend plus
+every custom node register on 0.43.2, but a render does **not** work yet: a 22-frame
+864x480 Preview job samples NaN latents (`video_rms=nan` at step 0 and every step after,
+rejected by `H3LatentProbe`), so no video is written. The identical job on 0.33.0 with
+`COMFY_CHANNEL = "stable"` produces a valid 22-frame H.264 clip in about 2.5 minutes.
+The encode pass is finite on 0.43.2, which points at GGUF weights going bad through the
+`return_weight`/`force_cast` shim or the new DynamicVRAM/aimdo offloading rather than at
+the graph. `latest` stays wired for development but is not usable for renders; keep
+`stable` as the default until that path is fixed.
+
 ## Local development
 
 ```bash
