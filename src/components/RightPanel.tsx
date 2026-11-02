@@ -262,7 +262,7 @@ export default function RightPanel({
                 </Section>
                 <Section title="Model" open={!!open.model} onToggle={() => toggle("model")}>
                   <div className="space-y-2">
-                    <span className="text-[12px] font-medium text-soft">DiT (GGUF)</span>
+                    <span className="text-[12px] font-medium text-soft">DiT (GGUF / W4A8)</span>
                     <Select
                       value={h3.ditChoice}
                       options={[...H3_DIT_CHOICES]}
@@ -272,7 +272,7 @@ export default function RightPanel({
                   {h3.mode === "reference" ? (
                     <>
                       <div className="space-y-2">
-                        <span className="text-[12px] font-medium text-soft">Ref2VA (GGUF)</span>
+                        <span className="text-[12px] font-medium text-soft">Ref2VA (GGUF / W4A8)</span>
                         <Select
                           value={h3.refChoice}
                           options={[...H3_REF_CHOICES]}
@@ -297,7 +297,8 @@ export default function RightPanel({
                   ) : (
                     <p className="text-[11px] leading-relaxed text-faint">
                       Q3_K_M fits the 0.4 gear on a T4; Q4_K_M is sharper but OOMs at long
-                      clips.
+                      clips. kijai_w4a8 is a 12.5 GB native W4A8 safetensors quant: it loads
+                      through ComfyUI's own loader and needs the tightest VRAM budget.
                     </p>
                   )}
                 </Section>
@@ -313,7 +314,7 @@ export default function RightPanel({
                   </div>
                   {h3.mode === "reference" ? (
                     <p className="text-[11px] leading-relaxed text-faint">
-                      Reference mode runs the separate Ref2VA GGUF with res_multistep and no
+                      Reference mode runs the separate Ref2VA model with res_multistep and no
                       turbo LoRA. 12–24 steps are recommended.
                     </p>
                   ) : (

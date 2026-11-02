@@ -376,7 +376,7 @@ export default function LeftPanel({
                   ))}
                 </div>
                 <p className="pt-3 text-[11px] leading-relaxed text-faint">
-                  Reference mode runs the separate Ref2VA GGUF. Refer to images in the prompt as{" "}
+                  Reference mode runs the separate Ref2VA model. Refer to images in the prompt as{" "}
                   <span className="font-medium text-soft">&lt;Picture 1&gt;</span>,{" "}
                   <span className="font-medium text-soft">&lt;Picture 2&gt;</span>, … in upload
                   order. Turbo LoRAs are ignored in this mode.

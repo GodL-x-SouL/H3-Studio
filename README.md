@@ -83,13 +83,24 @@ in sync.
 
 ## ComfyUI 0.43.2 (channel `latest`)
 
-The 0.33 pin is what every T4 run so far used. 0.43.2 is wired up and structurally
-verified on CPU, but a full GPU render has not been observed yet, so it is opt-in:
+0.43.2 is wired up and now renders on a T4, but only with one launch flag, so it stays
+opt-in:
 
 ```python
 # cell 01
 COMFY_CHANNEL = "latest"   # 0.43.2; use "stable" to return to 0.33.0
 ```
+
+0.43 streams DiT weights through comfy-aimdo Dynamic VRAM. On a 14 GB card that path
+hands back corrupted weights: a GGUF H3 job samples non-finite latents at step 0, and the
+VAE decode that runs after a restart inside the same page can fail as well (ComfyUI
+#15262, #17297). Cell 01 therefore ships `CHANNEL_EXTRA_FLAGS` and starts the `latest`
+channel with `--disable-dynamic-vram`; the `stable` pin predates the machinery and needs
+nothing. The pin is disabled per channel, but a user can still add their own flags in the
+Studio's extra-flags field.
+
+Measured on a T4 (2026-11-02, same graph that NaNs without the flag): encode 114 s,
+22-frame 864x480 2-step sample 60 s, decode 19 s, valid H.264 output.
 
 What was verified against a clean 0.43.2 checkout (CPU, no weights):
 
@@ -103,23 +114,39 @@ What was verified against a clean 0.43.2 checkout (CPU, no weights):
   0.43 eager fallback, and `GGUFModelPatcher` works after the `return_weight`/`force_cast`
   shim (unit-checked on a CPU layer).
 
-Known risks still to watch on the first GPU run: 0.43 needs the new `comfy-kitchen` and
-`comfy-aimdo` wheels from `requirements.txt`, the untouched 2025 Turbo LoRA adapter is
-older than 0.43's `ComfyAttention` work, and GGUF dequantization itself cannot be
-exercised without weights. If anything regresses, set `COMFY_CHANNEL = "stable"` and
-rerun cell 01 (it hard-resets the checkout).
+Known risks still to watch: the untouched 2025 Turbo LoRA adapter is older than 0.43's
+`ComfyAttention` work, and `--disable-dynamic-vram` gives up the memory system that lets
+0.43 hold big models on small cards, so a long clip at high resolution can OOM where the
+stable pin pages through. If anything regresses, set `COMFY_CHANNEL = "stable"` and rerun
+cell 01 (it hard-resets the checkout).
 
-### GPU smoke test (T4, 2026-11-01)
+### GPU smoke test (T4, 2026-11-02)
 
-All of the CPU checks above reproduce on a real T4 session, and the Studio backend plus
-every custom node register on 0.43.2, but a render does **not** work yet: a 22-frame
-864x480 Preview job samples NaN latents (`video_rms=nan` at step 0 and every step after,
-rejected by `H3LatentProbe`), so no video is written. The identical job on 0.33.0 with
-`COMFY_CHANNEL = "stable"` produces a valid 22-frame H.264 clip in about 2.5 minutes.
-The encode pass is finite on 0.43.2, which points at GGUF weights going bad through the
-`return_weight`/`force_cast` shim or the new DynamicVRAM/aimdo offloading rather than at
-the graph. `latest` stays wired for development but is not usable for renders; keep
-`stable` as the default until that path is fixed.
+All of the CPU checks above reproduce on a real T4 session, and with
+`--disable-dynamic-vram` the full H3 pipeline renders: encode → 22-frame 864x480
+2-step sample → VAE decode → H.264 file, with finite `video_rms` at every step. Without
+the flag the same job samples NaN at step 0 (`H3LatentProbe` rejects it) and the decode
+stage fails, which is why `CHANNEL_EXTRA_FLAGS` pins it for the `latest` channel only.
+0.33.0 needs no flag and still produces the reference clip.
+
+### W4A8 checkpoints (both channels)
+
+W4A8 is ComfyUI's native `asym_w4a8_int8` format: a plain `.safetensors` where every
+quantized module carries a `comfy_quant` JSON sidecar. It is not GGUF and needs no custom
+node — `UNETLoader` ("Load Diffusion Model") reads the metadata, and comfy-kitchen
+provides the kernels (0.33.0 pins 0.2.31, 0.43.2 pins 0.2.40; the T4's CUDA backend
+advertises `w4a8_int8_linear` and `dequantize_w4a8_int8_weight`).
+
+- cell 02: set `H3_DIT_CHOICE = "kijai_w4a8"` (FL2VA, 12.5 GB) or `REF2VA_CHOICE = "w4a8"`
+  (Ref2VA, 11.8 GB); both come from `Kijai/MiniMax-H3-experimental`.
+- cell 03 picks the loader from the file: `.gguf` goes through `UnetLoaderGGUF`, anything
+  else through `UNETLoader` (`dit_loader_spec`), and the graph validates against whichever
+  one the running ComfyUI exposes.
+- Budget: 12.5 GB of packed weights on a 14.5 GB T4 leaves little room for the 5 GB video
+  VAE. Preview-length clips fit; longer clips or a second resident model will OOM.
+- A turbo LoRA on a W4A8 base goes through ComfyUI's quantized LoRA path, which dequantizes
+  patched layers per forward (slower than the GGUF bypass path). Validate a short clip
+  before trusting a longer render.
 
 ## Local development
 
