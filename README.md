@@ -92,9 +92,8 @@ COMFY_CHANNEL = "latest"   # 0.43.2; use "stable" to return to 0.33.0
 ```
 
 0.43 streams DiT weights through comfy-aimdo Dynamic VRAM. On a 14 GB card that path
-hands back corrupted weights: a GGUF H3 job samples non-finite latents at step 0, and the
-VAE decode that runs after a restart inside the same page can fail as well (ComfyUI
-#15262, #17297). Cell 01 therefore ships `CHANNEL_EXTRA_FLAGS` and starts the `latest`
+hands back corrupted weights: a GGUF H3 job samples non-finite latents at step 0
+(ComfyUI #15262, #17297). Cell 01 therefore ships `CHANNEL_EXTRA_FLAGS` and starts the `latest`
 channel with `--disable-dynamic-vram`; the `stable` pin predates the machinery and needs
 nothing. The pin is disabled per channel, but a user can still add their own flags in the
 Studio's extra-flags field.
@@ -125,9 +124,15 @@ cell 01 (it hard-resets the checkout).
 All of the CPU checks above reproduce on a real T4 session, and with
 `--disable-dynamic-vram` the full H3 pipeline renders: encode → 22-frame 864x480
 2-step sample → VAE decode → H.264 file, with finite `video_rms` at every step. Without
-the flag the same job samples NaN at step 0 (`H3LatentProbe` rejects it) and the decode
-stage fails, which is why `CHANNEL_EXTRA_FLAGS` pins it for the `latest` channel only.
-0.33.0 needs no flag and still produces the reference clip.
+the flag the same job samples NaN at step 0 (`H3LatentProbe` rejects it), which is why
+`CHANNEL_EXTRA_FLAGS` pins it for the `latest` channel only. 0.33.0 needs no flag and
+still produces the reference clip.
+
+Decode failures in this window were a harness bug, not VRAM: 0.43 makes `SaveVideo.format`
+a dynamic combo with a *second* dynamic combo (`codec`) nested under every option, so
+`decode_fill` reported "format: dynamic combo has no free option" and every decode died
+after a successful sample on both channels. It now prefers `auto`, then any option without
+children, and fills nested combos as `format.codec` dotted keys.
 
 ### W4A8 checkpoints (both channels)
 
@@ -142,8 +147,16 @@ advertises `w4a8_int8_linear` and `dequantize_w4a8_int8_weight`).
 - cell 03 picks the loader from the file: `.gguf` goes through `UnetLoaderGGUF`, anything
   else through `UNETLoader` (`dit_loader_spec`), and the graph validates against whichever
   one the running ComfyUI exposes.
-- Budget: 12.5 GB of packed weights on a 14.5 GB T4 leaves little room for the 5 GB video
-  VAE. Preview-length clips fit; longer clips or a second resident model will OOM.
+- A 12.5 GB W4A8 DiT cannot sit resident on a 14.5 GB T4. On SM 7.5 comfy-kitchen falls
+  back to its eager W4A8 kernel, and the per-layer dequant wants ~1 GB of transient
+  headroom on top of the weights. `server_flags()` therefore does the opposite of the GGUF
+  fix for native quants: it keeps **DynamicVRAM streaming on** (dropping
+  `--disable-dynamic-vram`) and adds `--vram-headroom 0.5 --disable-pinned-memory
+  --disable-comfy-compiler`. Verified on a T4: 640x384, 22 frames, 2 steps samples a
+  finite latent in about three minutes with those flags.
+- Measured end-to-end on a T4 (22 frames, 2 steps, no LoRA): 640x384 renders in 208 s and
+  864x480 in 209 s, each a valid H.264 mp4 (encode + sample ~165 s, decode ~42 s). That is
+  within ~10% of the Q3_K_M GGUF on the same geometry, at far better fidelity.
 - A turbo LoRA on a W4A8 base goes through ComfyUI's quantized LoRA path, which dequantizes
   patched layers per forward (slower than the GGUF bypass path). Validate a short clip
   before trusting a longer render.
