@@ -98,8 +98,9 @@ channel with `--disable-dynamic-vram`; the `stable` pin predates the machinery a
 nothing. The pin is disabled per channel, but a user can still add their own flags in the
 Studio's extra-flags field.
 
-Measured on a T4 (2026-11-02, same graph that NaNs without the flag): encode 114 s,
-22-frame 864x480 2-step sample 60 s, decode 19 s, valid H.264 output.
+Measured on a T4 (2026-11-03, same graph that NaNs without the flag): a full
+22-frame 864x480 2-step `run_job` renders end to end in 237 s, mp4 attached (that run
+included the one-time Q3_K_M download), with no ComfyUI errors.
 
 What was verified against a clean 0.43.2 checkout (CPU, no weights):
 
