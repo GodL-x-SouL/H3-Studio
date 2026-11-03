@@ -157,6 +157,11 @@ export default function RightPanel({
   // 720p and below only warns; above 720p the preflight refuses the job.
   const overBudgetAdvisory = geomWidth * geomHeight <= VRAM_ADVISORY_AREA;
   const blocked = overBudget && !overBudgetAdvisory;
+  // Native W4A8 checkpoints only load through the 0.43.2 base stack.
+  const selectedH3Model = h3.mode === "reference" ? h3.refChoice : h3.ditChoice;
+  const needsW4A8 = isH3 && selectedH3Model.toLowerCase().includes("w4a8");
+  const olderStack =
+    needsW4A8 && !!status?.version && !status.version.startsWith("0.43");
 
   useEffect(() => {
     setTab("Video");
@@ -302,8 +307,26 @@ export default function RightPanel({
                       tenstrip_turbo_w4a8 is a 14 GB W4A8 hybrid with the turbo delta fused
                       in: run it at 4-8 steps with LoRA off. kijai_w4a8 is T4-verified up to
                       Preview; tenstrip_turbo_w4a8 is wired up but not yet measured here.
+                      W4A8 needs the 0.43.2 base stack; GGUF runs on 0.33.0.
                     </p>
                   )}
+                  {needsW4A8 ? (
+                    <p
+                      className={`text-[10.5px] leading-relaxed ${
+                        olderStack
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-faint"
+                      }`}
+                    >
+                      W4A8 checkpoints need the 0.43.2 base stack — set{" "}
+                      <span className="font-medium text-soft">COMFY_STACK</span> to{" "}
+                      <span className="font-medium text-soft">"0.43.2 (W4A8)"</span> in
+                      notebook cell 01.
+                      {olderStack
+                        ? ` This server is running ComfyUI ${status?.version}, so the next job will be refused.`
+                        : ""}
+                    </p>
+                  ) : null}
                 </Section>
                 <Section title="Seed & LoRA" open={!!open.seed} onToggle={() => toggle("seed")}>
                   <div className="space-y-2">

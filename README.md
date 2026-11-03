@@ -5,12 +5,12 @@ serves, not for H3 alone): a Vite + React + Tailwind frontend that
 talks to ComfyUI on the Colab VM through a small Python backend, designed to be exposed
 with a single cloudflared tunnel from the notebook.
 
-Both models share one ComfyUI install (`COMFY_CHANNEL` in cell 01: `stable` = 0.33.0,
-`latest` = 0.43.2), one backend and one tunnel. The model switch in the top bar swaps the
-whole settings surface: H3 jobs use the FL2VA / Ref2VA GGUF stacks with the H3-only
-method nodes, LTX-2.5 jobs use its 22B distilled DiT, gemma4 text encoder, dual VAEs and
-x2 latent upscaler. ComfyUI restarts automatically when a job switches model family,
-because H3 runs with `--force-fp16` and LTX does not.
+Both models share one ComfyUI install (the `COMFY_STACK` selector in cell 01:
+`0.33.0 (GGUF)` or `0.43.2 (W4A8)`), one backend and one tunnel. The model switch in the
+top bar swaps the whole settings surface: H3 jobs use the FL2VA / Ref2VA GGUF or W4A8
+stacks with the H3-only method nodes, LTX-2.5 jobs use its 22B distilled DiT, gemma4 text
+encoder, dual VAEs and x2 latent upscaler. ComfyUI restarts automatically when a job
+switches model family, because H3 runs with `--force-fp16` and LTX does not.
 
 ## Layout
 
@@ -38,14 +38,15 @@ LTX has no reference mode in this stack (no IC-LoRA model is downloaded).
 
 1. `00` — environment check and shared helpers (ComfyUI paths, process control, graph
    validation, log parsing).
-2. `01` — pins ComfyUI (`COMFY_CHANNEL`, stable 0.33.0 / latest 0.43.2), ComfyUI-GGUF,
-   the H3 Turbo nodes and patches the GGUF loader for both `minimax_h3` and LTX-2.5
-   (`gemma4` arch, ltxv fp32 tensors, gemma4 tokenizer bytes, fp16 embedding dequant).
-   On 0.43 it also adapts the GGUF patcher to the new `return_weight`/`force_cast`
+2. `01` — the `COMFY_STACK` selector pins ComfyUI (`0.33.0 (GGUF)` or `0.43.2 (W4A8)`),
+   ComfyUI-GGUF, the H3 Turbo nodes, and patches the GGUF loader for both `minimax_h3`
+   and LTX-2.5 (`gemma4` arch, ltxv fp32 tensors, gemma4 tokenizer bytes, fp16 embedding
+   dequant). It also adapts the GGUF patcher to the `return_weight`/`force_cast`
    `ModelPatcher` API. Writes the H3Lab + LTX25Lab control nodes.
 3. `02` — downloads the selected model sets (`MODEL_SET=both|h3|ltx`): H3 FL2VA and
-   Ref2VA GGUF, H3 text encoder + VAEs + turbo LoRA; LTX DiT + gemma4 TE + VAEs + x2
-   upscaler. Resumable, size-checked.
+   Ref2VA GGUF (or W4A8), H3 text encoder + VAEs + turbo LoRA; LTX DiT + gemma4 TE +
+   VAEs + x2 upscaler. W4A8 choices require the 0.43.2 stack and fail fast on 0.33.0.
+   Resumable, size-checked.
 4. `03` — starts ComfyUI, clones the `testing` branch to `/content/h3lab/H3-Studio`,
    builds the UI there (`npm ci && npm run build`, with a local Node 22 because Vite 8
    needs >= 20.19), starts the backend on `127.0.0.1:8000`, opens the cloudflared tunnel
@@ -81,22 +82,28 @@ names the largest preset that still fits). Estimator constants live in `src/type
 (`vramNeedGiB`, `VRAM_ADVISORY_AREA`) and in the notebook's preflight block — keep the two
 in sync.
 
-## ComfyUI 0.43.2 (channel `latest`)
+## Base-stack selector
 
-0.43.2 is wired up and now renders on a T4, but only with one launch flag, so it stays
-opt-in:
+Cell 01 starts with a form dropdown that ties the ComfyUI build to the checkpoint format:
 
 ```python
 # cell 01
-COMFY_CHANNEL = "latest"   # 0.43.2; use "stable" to return to 0.33.0
+COMFY_STACK = "0.33.0 (GGUF)"   # or "0.43.2 (W4A8)"
 ```
 
-0.43 streams DiT weights through comfy-aimdo Dynamic VRAM. On a 14 GB card that path
-hands back corrupted weights: a GGUF H3 job samples non-finite latents at step 0
-(ComfyUI #15262, #17297). Cell 01 therefore ships `CHANNEL_EXTRA_FLAGS` and starts the `latest`
-channel with `--disable-dynamic-vram`; the `stable` pin predates the machinery and needs
-nothing. The pin is disabled per channel, but a user can still add their own flags in the
-Studio's extra-flags field.
+- **0.33.0 (GGUF)** — the tested GGUF stack. Both 0.33.0 and 0.43.2 ship comfy-aimdo and
+  enable Dynamic VRAM by default, and that paging path hands back corrupted GGUF weights
+  on a T4: an H3 job samples non-finite latents at step 0 (ComfyUI #15262, #17297).
+  `CHANNEL_EXTRA_FLAGS` therefore launches every GGUF job with
+  `--disable-dynamic-vram`.
+- **0.43.2 (W4A8)** — required for native W4A8 safetensors. Cell 03 strips
+  `--disable-dynamic-vram` for those jobs and keeps Dynamic VRAM streaming on, which is
+  what lets a 12.5 GB model page through a 14.5 GB T4.
+
+W4A8 choices in cell 02 fail with a pointer to the selector when the stack is still
+0.33.0. The backend also restarts ComfyUI when the per-format flags differ, so switching
+between GGUF and W4A8 mid-session cannot reuse a server launched with the wrong flags.
+Users can still add their own flags in the Studio's extra-flags field.
 
 Measured on a T4 (2026-11-03, same graph that NaNs without the flag): a full
 22-frame 864x480 2-step `run_job` renders end to end in 237 s, mp4 attached (that run
@@ -116,9 +123,9 @@ What was verified against a clean 0.43.2 checkout (CPU, no weights):
 
 Known risks still to watch: the untouched 2025 Turbo LoRA adapter is older than 0.43's
 `ComfyAttention` work, and `--disable-dynamic-vram` gives up the memory system that lets
-0.43 hold big models on small cards, so a long clip at high resolution can OOM where the
-stable pin pages through. If anything regresses, set `COMFY_CHANNEL = "stable"` and rerun
-cell 01 (it hard-resets the checkout).
+0.43 hold big models on small cards, so a long GGUF clip at high resolution can OOM where
+W4A8 paging would stream. If anything regresses, set `COMFY_STACK = "0.33.0 (GGUF)"` and
+rerun cell 01 (it hard-resets the checkout).
 
 ### GPU smoke test (T4, 2026-11-02)
 
@@ -126,22 +133,23 @@ All of the CPU checks above reproduce on a real T4 session, and with
 `--disable-dynamic-vram` the full H3 pipeline renders: encode → 22-frame 864x480
 2-step sample → VAE decode → H.264 file, with finite `video_rms` at every step. Without
 the flag the same job samples NaN at step 0 (`H3LatentProbe` rejects it), which is why
-`CHANNEL_EXTRA_FLAGS` pins it for the `latest` channel only. 0.33.0 needs no flag and
-still produces the reference clip.
+`CHANNEL_EXTRA_FLAGS` pins it for GGUF jobs on both pins; 0.33.0 with the flag still
+produces the reference clip.
 
 Decode failures in this window were a harness bug, not VRAM: 0.43 makes `SaveVideo.format`
 a dynamic combo with a *second* dynamic combo (`codec`) nested under every option, so
 `decode_fill` reported "format: dynamic combo has no free option" and every decode died
-after a successful sample on both channels. It now prefers `auto`, then any option without
-children, and fills nested combos as `format.codec` dotted keys.
+after a successful sample on either channel. It now prefers `auto`, then any option
+without children, and fills nested combos as `format.codec` dotted keys.
 
-### W4A8 checkpoints (both channels)
+### W4A8 checkpoints (0.43.2 stack)
 
 W4A8 is ComfyUI's native `asym_w4a8_int8` format: a plain `.safetensors` where every
 quantized module carries a `comfy_quant` JSON sidecar. It is not GGUF and needs no custom
 node — `UNETLoader` ("Load Diffusion Model") reads the metadata, and comfy-kitchen
-provides the kernels (0.33.0 pins 0.2.31, 0.43.2 pins 0.2.40; the T4's CUDA backend
-advertises `w4a8_int8_linear` and `dequantize_w4a8_int8_weight`).
+0.2.40 (pinned by 0.43.2) provides the kernels; the T4's CUDA backend advertises
+`w4a8_int8_linear` and `dequantize_w4a8_int8_weight`. Set the cell 01 selector to
+`0.43.2 (W4A8)` before picking one of these checkpoints.
 
 - cell 02: set `H3_DIT_CHOICE = "kijai_w4a8"` (FL2VA, 12.5 GB) or `REF2VA_CHOICE = "w4a8"`
   (Ref2VA, 11.8 GB); both come from `Kijai/MiniMax-H3-experimental`.
