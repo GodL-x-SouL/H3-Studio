@@ -19,6 +19,7 @@ import {
   h3Size,
   ltxSize,
   vramNeedGiB,
+  w4a8T4GeometryBlocked,
   type DType,
   type H3Config,
   type LTXConfig,
@@ -156,16 +157,58 @@ export default function RightPanel({
     vramTotal !== null && vramNeed > vramTotal - VRAM_RESERVE_GIB;
   // 720p and below only warns; above 720p the preflight refuses the job.
   const overBudgetAdvisory = geomWidth * geomHeight <= VRAM_ADVISORY_AREA;
-  const blocked = overBudget && !overBudgetAdvisory;
   // Native W4A8 checkpoints only load through the 0.43.2 base stack.
   const selectedH3Model = h3.mode === "reference" ? h3.refChoice : h3.ditChoice;
   const needsW4A8 = isH3 && selectedH3Model.toLowerCase().includes("w4a8");
+  const nativeW4A8Blocked =
+    needsW4A8 &&
+    w4a8T4GeometryBlocked(weights, geomWidth, geomHeight, frames, vramTotal);
+  const blocked = (overBudget && !overBudgetAdvisory) || nativeW4A8Blocked;
+  const activationNeed = Math.max(0, vramNeed - weights);
+  const blockReason = nativeW4A8Blocked
+    ? `Native W4A8 on a ${vramTotal?.toFixed(1)} GiB GPU: this checkpoint is ${weights.toFixed(1)} GiB resident and this geometry needs ≈${activationNeed.toFixed(1)} GiB of activations. Use Draft (640×384) with 22–39 frames and LoRA off, or a ≥24 GB GPU.`
+    : overBudget
+      ? `This geometry needs ≈${vramNeed.toFixed(1)} GiB; the GPU reports ${vramTotal?.toFixed(1)} GiB${overBudgetAdvisory ? " (720p is allowed through; it may OOM)" : ""}`
+      : undefined;
   const olderStack =
     needsW4A8 && !!status?.version && !status.version.startsWith("0.43");
 
   useEffect(() => {
     setTab("Video");
   }, [model]);
+
+  // TenStrip's 14 GB file is turbo-baked and cannot fit Preview's activation
+  // budget on a T4. Selecting it moves the form to the smallest geometry that
+  // streams, drops the redundant turbo LoRA, and uses the model card's few-step
+  // range. The backend repeats both rules so stale clients cannot bypass them.
+  const chooseDit = (value: string) => {
+    if (value === "tenstrip_turbo_w4a8") {
+      patchH3({
+        ditChoice: value,
+        resolution: "draft",
+        frames: 39,
+        steps: 4,
+        speed: "none",
+        loras: h3.loras.filter((entry) => !entry.name.toLowerCase().includes("turbo")),
+      });
+      return;
+    }
+    patchH3({ ditChoice: value });
+  };
+
+  const chooseRef = (value: string) => {
+    if (value === "tenstrip_w4a8") {
+      patchH3({
+        refChoice: value,
+        resolution: "draft",
+        frames: 39,
+        steps: 6,
+        speed: "none",
+      });
+      return;
+    }
+    patchH3({ refChoice: value });
+  };
 
   const generate = async () => {
     setGenBusy(true);
@@ -247,7 +290,7 @@ export default function RightPanel({
                     value={h3.resolution}
                     onChange={(id) => patchH3({ resolution: id })}
                     stage={() => "native single pass — H3 renders at the picked size, no upscale stage"}
-                    hint="H3 renders natively and needs multiples of 32. Preview (864×480) is the tested T4 default; up to 720p runs with a warning, 1080p/2K are refused."
+                    hint="H3 renders natively and needs multiples of 32. Preview (864×480) is the tested T4 default; up to 720p runs with a warning, 1080p/2K are refused. Native W4A8 on a T4 is limited to Draft because the checkpoint leaves no activation headroom."
                   />
                   <VramCheck
                     need={vramNeed}
@@ -255,6 +298,15 @@ export default function RightPanel({
                     largest={largestFit}
                     advisory={overBudgetAdvisory}
                   />
+                  {nativeW4A8Blocked ? (
+                    <p className="text-[10.5px] leading-relaxed text-red-500 dark:text-red-400">
+                      Native W4A8 is {weights.toFixed(1)} GiB resident and this geometry
+                      needs ≈{activationNeed.toFixed(1)} GiB of activations. The T4 has
+                      only ~13.3 GiB addressable after ComfyUI's CUDA context, so
+                      sampling would be OOM-killed. Pick Draft 640×384 with 22–39 frames
+                      and LoRA off, or use a ≥24 GB GPU.
+                    </p>
+                  ) : null}
                   <SliderRow
                     label="Frames"
                     value={h3.frames}
@@ -271,7 +323,7 @@ export default function RightPanel({
                     <Select
                       value={h3.ditChoice}
                       options={[...H3_DIT_CHOICES]}
-                      onChange={(value) => patchH3({ ditChoice: value })}
+                      onChange={chooseDit}
                     />
                   </div>
                   {h3.mode === "reference" ? (
@@ -281,7 +333,7 @@ export default function RightPanel({
                         <Select
                           value={h3.refChoice}
                           options={[...H3_REF_CHOICES]}
-                          onChange={(value) => patchH3({ refChoice: value })}
+                          onChange={chooseRef}
                         />
                       </div>
                       <div className="space-y-2">
@@ -305,9 +357,11 @@ export default function RightPanel({
                       clips. kijai_w4a8 is a 12.5 GB native W4A8 safetensors quant: it loads
                       through ComfyUI's own loader and needs the tightest VRAM budget.
                       tenstrip_turbo_w4a8 is a 14 GB W4A8 hybrid with the turbo delta fused
-                      in: run it at 4-8 steps with LoRA off. kijai_w4a8 is T4-verified up to
-                      Preview; tenstrip_turbo_w4a8 is wired up but not yet measured here.
-                      W4A8 needs the 0.43.2 base stack; GGUF runs on 0.33.0.
+                      in: selecting it moves to Draft 640×384, 39 frames, 4 steps and
+                      drops the turbo LoRA. On a T4 the 14 GB checkpoint streams with
+                      almost no headroom, so larger geometries are refused before encode;
+                      kijai_w4a8 (12.5 GB) is the T4-verified W4A8 choice. W4A8 needs the
+                      0.43.2 base stack; GGUF runs on 0.33.0.
                     </p>
                   )}
                   {needsW4A8 ? (
@@ -352,7 +406,7 @@ export default function RightPanel({
                         onChange={(next) => patchH3({ loras: next })}
                         online={online}
                         onAddLora={onAddLora}
-                        hint="Chained in order on the H3 DiT — turbo-format LoRAs use the H3 turbo node, ComfyUI-format ones the standard loader."
+                        hint="Chained in order on the H3 DiT — turbo-format LoRAs use the H3 turbo node, ComfyUI-format ones the standard loader. Turbo LoRAs are dropped automatically on turbo-baked checkpoints."
                       />
                     </>
                   )}
@@ -608,11 +662,7 @@ export default function RightPanel({
       <button
         type="button"
         disabled={!online || genBusy || blocked}
-        title={
-          overBudget
-            ? `This geometry needs ≈${vramNeed.toFixed(1)} GiB; the GPU reports ${vramTotal?.toFixed(1)} GiB${overBudgetAdvisory ? " (720p is allowed through; it may OOM)" : ""}`
-            : undefined
-        }
+        title={blockReason}
         onClick={() => void generate()}
         className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-[13px] font-medium text-primary-ink transition-opacity hover:opacity-90 disabled:opacity-50"
       >
@@ -621,11 +671,13 @@ export default function RightPanel({
           ? "Queueing…"
           : !online
             ? "Backend offline"
-            : blocked
-              ? "Doesn't fit this GPU"
-              : overBudget
-                ? "Generate anyway"
-                : "Generate"}
+            : nativeW4A8Blocked
+              ? "W4A8 won't fit this GPU"
+              : blocked
+                ? "Doesn't fit this GPU"
+                : overBudget
+                  ? "Generate anyway"
+                  : "Generate"}
       </button>
       {genNote ? (
         <p

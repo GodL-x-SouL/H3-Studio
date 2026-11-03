@@ -82,6 +82,14 @@ names the largest preset that still fits). Estimator constants live in `src/type
 (`vramNeedGiB`, `VRAM_ADVISORY_AREA`) and in the notebook's preflight block — keep the two
 in sync.
 
+Native W4A8 is the exception to the 720p advisory rule. Those checkpoints are 11.4-13.0
+GiB resident and a T4 only exposes ~13.3 GiB to ComfyUI after its CUDA context, so there
+is at most ~1 GiB left for activations. On GPUs with ≤16.5 GiB total, the notebook and the
+UI therefore refuse any W4A8 geometry whose activation estimate exceeds 1 GiB, even if it
+is below 720p. On a T4 use 640×384 with 22-39 frames: Kijai's 12.5 GB file was measured at
+22 frames/2 steps, while the turbo-baked TenStrip file wants 4-6 steps. Preview/long clips
+need a ≥24 GB GPU.
+
 ## Base-stack selector
 
 Cell 01 starts with a form dropdown that ties the ComfyUI build to the checkpoint format:
@@ -98,7 +106,8 @@ COMFY_STACK = "0.33.0 (GGUF)"   # or "0.43.2 (W4A8)"
   `--disable-dynamic-vram`.
 - **0.43.2 (W4A8)** — required for native W4A8 safetensors. Cell 03 strips
   `--disable-dynamic-vram` for those jobs and keeps Dynamic VRAM streaming on, which is
-  what lets a 12.5 GB model page through a 14.5 GB T4.
+  what lets a 12.5 GB model page through the ~13.3 GiB a T4 exposes after its CUDA
+  context.
 
 W4A8 choices in cell 02 fail with a pointer to the selector when the stack is still
 0.33.0. The backend also restarts ComfyUI when the per-format flags differ, so switching
@@ -147,8 +156,8 @@ without children, and fills nested combos as `format.codec` dotted keys.
 W4A8 is ComfyUI's native `asym_w4a8_int8` format: a plain `.safetensors` where every
 quantized module carries a `comfy_quant` JSON sidecar. It is not GGUF and needs no custom
 node — `UNETLoader` ("Load Diffusion Model") reads the metadata, and comfy-kitchen
-0.2.40 (pinned by 0.43.2) provides the kernels; the T4's CUDA backend advertises
-`w4a8_int8_linear` and `dequantize_w4a8_int8_weight`. Set the cell 01 selector to
+0.2.40 (pinned by 0.43.2) provides the kernels. The CUDA fast path requires SM80+, so a
+T4 (SM 7.5) runs comfy-kitchen's eager W4A8 path instead. Set the cell 01 selector to
 `0.43.2 (W4A8)` before picking one of these checkpoints.
 
 - cell 02: set `H3_DIT_CHOICE = "kijai_w4a8"` (FL2VA, 12.5 GB) or `REF2VA_CHOICE = "w4a8"`
@@ -156,16 +165,19 @@ node — `UNETLoader` ("Load Diffusion Model") reads the metadata, and comfy-kit
 - `tenstrip_turbo_w4a8` / `REF2VA_CHOICE = "tenstrip_w4a8"` load TenStrip's
   `10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors` (14.0 GB, 13.0 GiB
   resident) from `TenStrip/10Eros-Max`. It is a hybrid merge of FL2VA and Ref2VA with a
-  turbo delta fused into the weights, so it wants **4-8 steps and no turbo LoRA** — the
-  cell 03 warnings say so, and a turbo LoRA on top is flagged as double-counting. It is
-  wired up but **not measured on a T4 yet**; at Preview it needs ~13.9 GiB of the 14.9 GiB
-  budget.
+  turbo delta fused into the weights, so it wants **4-8 steps and no turbo LoRA**. The
+  backend now drops a turbo LoRA automatically for turbo-baked checkpoints, and selecting
+  the file in the Studio moves the form to Draft 640×384, 39 frames, 4 steps (6 for
+  Ref2VA). It is still **not T4-verified**: only the 640×384/22-39-frame streaming case is
+  allowed, and larger geometries are refused before encode.
 - cell 03 picks the loader from the file: `.gguf` goes through `UnetLoaderGGUF`, anything
   else through `UNETLoader` (`dit_loader_spec`), and the graph validates against whichever
   one the running ComfyUI exposes.
-- A 12.5 GB W4A8 DiT cannot sit resident on a 14.5 GB T4. On SM 7.5 comfy-kitchen falls
-  back to its eager W4A8 kernel, and the per-layer dequant wants ~1 GB of transient
-  headroom on top of the weights. `server_flags()` therefore does the opposite of the GGUF
+- A 12.5 GB W4A8 DiT cannot sit resident in the ~13.3 GiB a T4 exposes to ComfyUI after
+  its CUDA context (torch reports 15.0 GiB total, but only 13,588 MiB is addressable in
+  practice). On SM 7.5 comfy-kitchen falls back to its eager W4A8 kernel, and the
+  per-layer dequant wants ~1 GB of transient headroom on top of the weights.
+  `server_flags()` therefore does the opposite of the GGUF
   fix for native quants: it keeps **DynamicVRAM streaming on** (dropping
   `--disable-dynamic-vram`) and adds `--vram-headroom 0.5 --disable-pinned-memory
   --disable-comfy-compiler`. Verified on a T4: 640x384, 22 frames, 2 steps samples a

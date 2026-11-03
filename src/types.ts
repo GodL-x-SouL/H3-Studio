@@ -138,7 +138,9 @@ export const LTX_SAMPLERS: readonly LTXSampler[] = [
 // grid, and its official quality ladder tops out at 2K (2560x1440). Anchors are 16:9;
 // other ratios keep the same pixel area and are rounded to 32.
 export const H3_RESOLUTIONS: ResolutionPreset[] = [
-  { id: "draft", label: "Draft", width: 672, height: 384 },
+  // Kijai's T4 W4A8 verification used 640x384; it is also the largest frame
+  // count that leaves a native W4A8 checkpoint any activation headroom.
+  { id: "draft", label: "Draft", width: 640, height: 384 },
   { id: "preview", label: "Preview", width: 864, height: 480 },
   { id: "balanced", label: "Balanced", width: 1024, height: 576 },
   { id: "hd", label: "HD", width: 1344, height: 768 },
@@ -236,4 +238,22 @@ export function vramNeedGiB(
   frames: number,
 ): number {
   return weights + VRAM_GIB_PER_MP_FRAME * ((width * height) / 1_000_000) * Math.max(1, frames);
+}
+
+// Native W4A8 weights are 11.4-13.0 GiB. A T4 only keeps ~13.3 GiB addressable
+// after ComfyUI's CUDA context, so these checkpoints stream almost everything and
+// have at most ~1 GiB left for activations. Larger geometries have died during
+// sampling after a successful encode, so the UI refuses them up front.
+export const W4A8_T4_MAX_TOTAL_GIB = 16.5;
+export const W4A8_T4_MAX_ACTIVATIONS_GIB = 1.0;
+
+export function w4a8T4GeometryBlocked(
+  weights: number,
+  width: number,
+  height: number,
+  frames: number,
+  total: number | null,
+): boolean {
+  if (total === null || total > W4A8_T4_MAX_TOTAL_GIB) return false;
+  return vramNeedGiB(weights, width, height, frames) - weights > W4A8_T4_MAX_ACTIVATIONS_GIB;
 }
