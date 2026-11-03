@@ -119,8 +119,13 @@ export const LORA_CHOICES = [
   "minimax_h3_turbo_4step_ema_ckpt850.safetensors",
 ];
 
-export const H3_DIT_CHOICES = ["abiray_Q3_K_M", "abiray_Q4_K_M", "kijai_w4a8"];
-export const H3_REF_CHOICES = ["Q3_K_M", "Q4_K_M", "w4a8"];
+export const H3_DIT_CHOICES = [
+  "abiray_Q3_K_M",
+  "abiray_Q4_K_M",
+  "kijai_w4a8",
+  "tenstrip_turbo_w4a8",
+];
+export const H3_REF_CHOICES = ["Q3_K_M", "Q4_K_M", "w4a8", "tenstrip_w4a8"];
 export const H3_REF_IMAGE_SIZES = ["match", "max"] as const;
 export const LTX_SAMPLERS: readonly LTXSampler[] = [
   "euler_ancestral",
@@ -215,6 +220,8 @@ export const H3_WEIGHTS_GIB: Record<string, number> = {
   abiray_Q3_K_M: 8.85,
   abiray_Q4_K_M: 11.33,
   kijai_w4a8: 12.1,
+  tenstrip_turbo_w4a8: 13.0,
+  tenstrip_w4a8: 13.0,
   Q3_K_M: 8.85,
   Q4_K_M: 11.33,
   w4a8: 11.4,

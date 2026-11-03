@@ -145,6 +145,13 @@ advertises `w4a8_int8_linear` and `dequantize_w4a8_int8_weight`).
 
 - cell 02: set `H3_DIT_CHOICE = "kijai_w4a8"` (FL2VA, 12.5 GB) or `REF2VA_CHOICE = "w4a8"`
   (Ref2VA, 11.8 GB); both come from `Kijai/MiniMax-H3-experimental`.
+- `tenstrip_turbo_w4a8` / `REF2VA_CHOICE = "tenstrip_w4a8"` load TenStrip's
+  `10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors` (14.0 GB, 13.0 GiB
+  resident) from `TenStrip/10Eros-Max`. It is a hybrid merge of FL2VA and Ref2VA with a
+  turbo delta fused into the weights, so it wants **4-8 steps and no turbo LoRA** — the
+  cell 03 warnings say so, and a turbo LoRA on top is flagged as double-counting. It is
+  wired up but **not measured on a T4 yet**; at Preview it needs ~13.9 GiB of the 14.9 GiB
+  budget.
 - cell 03 picks the loader from the file: `.gguf` goes through `UnetLoaderGGUF`, anything
   else through `UNETLoader` (`dit_loader_spec`), and the graph validates against whichever
   one the running ComfyUI exposes.

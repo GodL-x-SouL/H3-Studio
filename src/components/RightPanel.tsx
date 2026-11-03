@@ -299,6 +299,9 @@ export default function RightPanel({
                       Q3_K_M fits the 0.4 gear on a T4; Q4_K_M is sharper but OOMs at long
                       clips. kijai_w4a8 is a 12.5 GB native W4A8 safetensors quant: it loads
                       through ComfyUI's own loader and needs the tightest VRAM budget.
+                      tenstrip_turbo_w4a8 is a 14 GB W4A8 hybrid with the turbo delta fused
+                      in: run it at 4-8 steps with LoRA off. kijai_w4a8 is T4-verified up to
+                      Preview; tenstrip_turbo_w4a8 is wired up but not yet measured here.
                     </p>
                   )}
                 </Section>
